@@ -10,7 +10,7 @@ import {
   Alert
 } from "reactstrap";
 import QuestionCard from "../components/QuestionCard";
-import type { Question } from "../types/questions";
+import type { Question } from "../types";
 
 const QuestionListPage: React.FC = () => {
   const { client } = useAuth();

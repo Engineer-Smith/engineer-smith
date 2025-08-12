@@ -11,7 +11,7 @@ import {
   Input,
 } from "reactstrap";
 
-import type { SectionType, SectionWithQuestions } from "../../types/tests";
+import type { SectionType, SectionWithQuestions } from "../../types";
 
 interface SectionModalState {
   open: boolean;

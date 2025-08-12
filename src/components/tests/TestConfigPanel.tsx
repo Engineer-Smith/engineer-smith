@@ -15,9 +15,8 @@ import {
   Spinner,
   Badge,
 } from "reactstrap";
-import type { CreateTestData, TestTemplate } from "../../types/tests";
-import { calcTotals } from "../../types/testBuilder"; // if calcTotals will be moved, update import
-import type { Question } from "../../types/testBuilder";
+import type { CreateTestData, TestTemplate, Question } from "../../types";
+import { calcTotals } from "../../types";
 
 interface TestConfigPanelProps {
   templates: TestTemplate[];

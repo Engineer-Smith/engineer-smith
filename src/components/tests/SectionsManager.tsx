@@ -5,8 +5,8 @@ import type {
   CreateTestData,
   SectionType,
   SectionWithQuestions,
-} from "../../types/tests";
-import type { Question } from "../../types/questions";
+  Question
+} from "../../types";
 
 interface SectionsManagerProps {
   testData: CreateTestData;

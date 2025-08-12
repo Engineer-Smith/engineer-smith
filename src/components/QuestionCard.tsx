@@ -19,7 +19,7 @@ import {
   Alert,
 } from "reactstrap";
 import { useAuth } from "../context/AuthContext";
-import type { Question } from "../types/questions";
+import type { Question } from "../types";
 
 interface QuestionCardProps {
   question: Question;

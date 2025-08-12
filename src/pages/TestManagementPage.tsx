@@ -15,9 +15,10 @@ import {
   Input,
   FormGroup,
   Label,
+  Tooltip,
 } from "reactstrap";
 import { testAPI } from "../services/testAPI";
-import type { TestListItem } from "../types/tests";
+import type { TestListItem } from "../types";
 
 type TestStatus = "draft" | "published" | "archived";
 
@@ -25,10 +26,12 @@ const TestManagementPage: React.FC = () => {
   const [tests, setTests] = useState<TestListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tooltipOpen, setTooltipOpen] = useState<Record<string, boolean>>({});
   const [filter, setFilter] = useState({
     status: "",
     skill: "",
     search: "",
+    useSections: "", // New filter for section-based tests
   });
   const navigate = useNavigate();
 
@@ -44,6 +47,7 @@ const TestManagementPage: React.FC = () => {
       if (filter.status) params.append("status", filter.status);
       if (filter.skill) params.append("skill", filter.skill);
       if (filter.search) params.append("search", filter.search);
+      if (filter.useSections) params.append("useSections", filter.useSections);
 
       const response = await testAPI.getAllTests(params.toString());
       setTests(response.tests);
@@ -87,6 +91,13 @@ const TestManagementPage: React.FC = () => {
     }
   };
 
+  const toggleTooltip = (testId: string) => {
+    setTooltipOpen(prev => ({
+      ...prev,
+      [testId]: !prev[testId]
+    }));
+  };
+
   const getStatusBadge = (status: TestStatus) => {
     const colors: Record<TestStatus, string> = {
       draft: "secondary",
@@ -107,6 +118,34 @@ const TestManagementPage: React.FC = () => {
       custom: "Custom",
     };
     return types[testType] || testType;
+  };
+
+  // Enhanced function to get question count (handles sections)
+  const getQuestionCount = (test: any) => {
+    if (test.settings?.useSections && test.sections) {
+      return test.sections.reduce((total: number, section: any) => {
+        if (section.questionPool?.enabled) {
+          return total + (section.questionPool.totalQuestions || 0);
+        }
+        return total + (section.questions?.length || 0);
+      }, 0);
+    }
+    return test.questions?.length ?? 0;
+  };
+
+  // Enhanced function to get total time (handles sections)
+  const getTotalTime = (test: any) => {
+    if (test.settings?.useSections && test.sections) {
+      return test.sections.reduce((total: number, section: any) => {
+        return total + (section.timeLimit || 0);
+      }, 0);
+    }
+    return test.settings?.timeLimit || 0;
+  };
+
+  // Get section count for display
+  const getSectionCount = (test: any) => {
+    return test.settings?.useSections ? (test.sections?.length || 0) : 0;
   };
 
   if (loading) {
@@ -138,11 +177,11 @@ const TestManagementPage: React.FC = () => {
         </Alert>
       )}
 
-      {/* Filters */}
+      {/* Enhanced Filters */}
       <Card className="mb-4">
         <CardBody>
           <Row>
-            <Col md="4">
+            <Col md="3">
               <FormGroup>
                 <Label>Filter by Status</Label>
                 <Input
@@ -157,7 +196,7 @@ const TestManagementPage: React.FC = () => {
                 </Input>
               </FormGroup>
             </Col>
-            <Col md="4">
+            <Col md="3">
               <FormGroup>
                 <Label>Filter by Skill</Label>
                 <Input
@@ -168,12 +207,26 @@ const TestManagementPage: React.FC = () => {
                 />
               </FormGroup>
             </Col>
-            <Col md="4">
+            <Col md="3">
+              <FormGroup>
+                <Label>Test Structure</Label>
+                <Input
+                  type="select"
+                  value={filter.useSections}
+                  onChange={(e) => setFilter({ ...filter, useSections: e.target.value })}
+                >
+                  <option value="">All Tests</option>
+                  <option value="true">Section-Based</option>
+                  <option value="false">Single Section</option>
+                </Input>
+              </FormGroup>
+            </Col>
+            <Col md="3">
               <FormGroup>
                 <Label>Search Tests</Label>
                 <Input
                   type="text"
-                  placeholder="Search by title or description..."
+                  placeholder="Search by title..."
                   value={filter.search}
                   onChange={(e) => setFilter({ ...filter, search: e.target.value })}
                 />
@@ -182,14 +235,14 @@ const TestManagementPage: React.FC = () => {
           </Row>
           <Button
             color="outline-secondary"
-            onClick={() => setFilter({ status: "", skill: "", search: "" })}
+            onClick={() => setFilter({ status: "", skill: "", search: "", useSections: "" })}
           >
             Clear Filters
           </Button>
         </CardBody>
       </Card>
 
-      {/* Tests Table */}
+      {/* Enhanced Tests Table */}
       <Card>
         <CardBody>
           {tests.length === 0 ? (
@@ -208,7 +261,9 @@ const TestManagementPage: React.FC = () => {
                   <th>Title</th>
                   <th>Type</th>
                   <th>Skills</th>
+                  <th>Structure</th>
                   <th>Questions</th>
+                  <th>Time</th>
                   <th>Status</th>
                   <th>Stats</th>
                   <th>Created</th>
@@ -216,115 +271,163 @@ const TestManagementPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {tests.map((test) => (
-                  <tr key={test._id}>
-                    <td>
-                      <div>
-                        <strong>{test.title}</strong>
-                        {test.description && (
-                          <div className="text-muted small">
-                            {test.description.substring(0, 60)}...
+                {tests.map((test) => {
+                  const questionCount = getQuestionCount(test);
+                  const totalTime = getTotalTime(test);
+                  const sectionCount = getSectionCount(test);
+                  const useSections = test.settings?.useSections;
+
+                  return (
+                    <tr key={test._id}>
+                      <td>
+                        <div>
+                          <strong>{test.title}</strong>
+                          {test.description && (
+                            <div className="text-muted small">
+                              {test.description.substring(0, 60)}...
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td>{getTestTypeDisplay(test.testType)}</td>
+                      <td>
+                        {test.skills.map((skill, index) => (
+                          <Badge key={index} color="info" className="me-1 mb-1">
+                            {skill}
+                          </Badge>
+                        ))}
+                      </td>
+                      <td>
+                        {useSections ? (
+                          <div>
+                            <Badge color="success" className="me-1">
+                              📚 {sectionCount} sections
+                            </Badge>
+                            <div className="small text-muted">
+                              Timed sections
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <Badge color="secondary">
+                              📝 Single section
+                            </Badge>
+                            <div className="small text-muted">
+                              Traditional test
+                            </div>
                           </div>
                         )}
-                      </div>
-                    </td>
-                    <td>{getTestTypeDisplay(test.testType)}</td>
-                    <td>
-                      {test.skills.map((skill, index) => (
-                        <Badge key={index} color="info" className="me-1 mb-1">
-                          {skill}
-                        </Badge>
-                      ))}
-                    </td>
-                    <td>
-                      <span className="badge bg-light text-dark">
-                        {test.questions?.length ?? 0} questions
-                      </span>
-                    </td>
-                    <td>{getStatusBadge(test.status)}</td>
-                    <td>
-                      <small>
-                        <div>Attempts: {test.stats?.totalAttempts ?? 0}</div>
-                        <div>
-                          Avg Score: {test.stats?.averageScore?.toFixed(1) ?? 0}%
-                        </div>
-                        <div>
-                          Pass Rate: {test.stats?.passRate?.toFixed(1) ?? 0}%
-                        </div>
-                      </small>
-                    </td>
-                    <td>
-                      <small>
-                        {new Date(test.createdAt).toLocaleDateString()}
-                        <br />
-                        <span className="text-muted">
-                          {test.createdBy?.profile?.firstName}{" "}
-                          {test.createdBy?.profile?.lastName}
+                      </td>
+                      <td>
+                        <span className="badge bg-light text-dark" id={`questions-${test._id}`}>
+                          {questionCount} questions
                         </span>
-                      </small>
-                    </td>
-                    <td>
-                      <div className="btn-group-vertical btn-group-sm">
-                        <Button
-                          size="sm"
-                          color="outline-primary"
-                          onClick={() => navigate(`/admin/tests/${test._id}`)}
-                        >
-                          View
-                        </Button>
-                        <Button
-                          size="sm"
-                          color="outline-secondary"
-                          onClick={() => navigate(`/admin/tests/${test._id}/edit`)}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          size="sm"
-                          color="outline-info"
-                          onClick={() => handleDuplicateTest(test._id)}
-                        >
-                          Duplicate
-                        </Button>
-                        {test.status === "draft" && (
+                        {useSections && (
+                          <Tooltip
+                            placement="top"
+                            isOpen={tooltipOpen[test._id]}
+                            target={`questions-${test._id}`}
+                            toggle={() => toggleTooltip(test._id)}
+                          >
+                            Questions distributed across {sectionCount} sections
+                          </Tooltip>
+                        )}
+                      </td>
+                      <td>
+                        <div className="small">
+                          <div><strong>{totalTime} min</strong></div>
+                          {useSections && (
+                            <div className="text-muted">
+                              ({Math.round(totalTime / sectionCount)} min/section avg)
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td>{getStatusBadge(test.status)}</td>
+                      <td>
+                        <small>
+                          <div>Attempts: {test.stats?.totalAttempts ?? 0}</div>
+                          <div>
+                            Avg Score: {test.stats?.averageScore?.toFixed(1) ?? 0}%
+                          </div>
+                          <div>
+                            Pass Rate: {test.stats?.passRate?.toFixed(1) ?? 0}%
+                          </div>
+                        </small>
+                      </td>
+                      <td>
+                        <small>
+                          {new Date(test.createdAt).toLocaleDateString()}
+                          <br />
+                          <span className="text-muted">
+                            {test.createdBy?.profile?.firstName}{" "}
+                            {test.createdBy?.profile?.lastName}
+                          </span>
+                        </small>
+                      </td>
+                      <td>
+                        <div className="btn-group-vertical btn-group-sm">
                           <Button
                             size="sm"
-                            color="outline-success"
-                            onClick={() => handleStatusChange(test._id, "published")}
+                            color="outline-primary"
+                            onClick={() => navigate(`/admin/tests/${test._id}`)}
                           >
-                            Publish
+                            View
                           </Button>
-                        )}
-                        {test.status === "published" && (
                           <Button
                             size="sm"
-                            color="outline-warning"
-                            onClick={() => handleStatusChange(test._id, "archived")}
+                            color="outline-secondary"
+                            onClick={() => navigate(`/admin/tests/${test._id}/edit`)}
                           >
-                            Archive
+                            Edit
                           </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          color="outline-danger"
-                          onClick={() => handleDeleteTest(test._id)}
-                          disabled={(test.stats?.totalAttempts ?? 0) > 0}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          <Button
+                            size="sm"
+                            color="outline-info"
+                            onClick={() => handleDuplicateTest(test._id)}
+                          >
+                            Duplicate
+                          </Button>
+                          {test.status === "draft" && (
+                            <Button
+                              size="sm"
+                              color="outline-success"
+                              onClick={() => handleStatusChange(test._id, "published")}
+                            >
+                              Publish
+                            </Button>
+                          )}
+                          {test.status === "published" && (
+                            <Button
+                              size="sm"
+                              color="outline-warning"
+                              onClick={() => handleStatusChange(test._id, "archived")}
+                            >
+                              Archive
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            color="outline-danger"
+                            onClick={() => handleDeleteTest(test._id)}
+                            disabled={(test.stats?.totalAttempts ?? 0) > 0}
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </Table>
           )}
         </CardBody>
       </Card>
 
-      {/* Quick Stats */}
+      {/* Enhanced Quick Stats */}
       <Row className="mt-4">
-        <Col md="3">
+        <Col md="2">
           <Card>
             <CardBody className="text-center">
               <h4>{tests.length}</h4>
@@ -332,7 +435,7 @@ const TestManagementPage: React.FC = () => {
             </CardBody>
           </Card>
         </Col>
-        <Col md="3">
+        <Col md="2">
           <Card>
             <CardBody className="text-center">
               <h4>{tests.filter((t) => t.status === "published").length}</h4>
@@ -340,7 +443,7 @@ const TestManagementPage: React.FC = () => {
             </CardBody>
           </Card>
         </Col>
-        <Col md="3">
+        <Col md="2">
           <Card>
             <CardBody className="text-center">
               <h4>{tests.filter((t) => t.status === "draft").length}</h4>
@@ -348,7 +451,23 @@ const TestManagementPage: React.FC = () => {
             </CardBody>
           </Card>
         </Col>
-        <Col md="3">
+        <Col md="2">
+          <Card>
+            <CardBody className="text-center">
+              <h4>{tests.filter((t) => t.settings?.useSections).length}</h4>
+              <small className="text-muted">Section-Based</small>
+            </CardBody>
+          </Card>
+        </Col>
+        <Col md="2">
+          <Card>
+            <CardBody className="text-center">
+              <h4>{tests.reduce((sum, t) => sum + getQuestionCount(t), 0)}</h4>
+              <small className="text-muted">Total Questions</small>
+            </CardBody>
+          </Card>
+        </Col>
+        <Col md="2">
           <Card>
             <CardBody className="text-center">
               <h4>{tests.reduce((sum, t) => sum + (t.stats?.totalAttempts ?? 0), 0)}</h4>

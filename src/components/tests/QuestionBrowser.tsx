@@ -13,9 +13,7 @@ import {
   Label,
 } from "reactstrap";
 
-import type { CreateTestData } from "../../types/tests";
-import type { Question } from "../../types/questions";
-
+import type { Question, CreateTestData } from '../../types';
 interface QuestionBrowserProps {
   loading: boolean;
   questions: Question[]; // kept for future use if needed

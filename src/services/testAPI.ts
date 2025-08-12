@@ -7,7 +7,7 @@ import type {
   CreateTestData,
   TestListItem,
   TestSession,
-} from "../types/tests";
+} from "../types";
 
 export const testAPI = {
   // Get all tests with optional query parameters

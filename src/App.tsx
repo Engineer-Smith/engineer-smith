@@ -14,6 +14,7 @@ import SystemHealthPage from "./pages/SystemHealthPage";
 import UserManagementPage from "./pages/UserManagementPage";
 import TestManagementPage from "./pages/TestManagementPage";
 import CreateTestPage from "./pages/CreateTestPage";
+import TestDetailsPage from "./pages/TestDetailsPage";
 
 function RootRoute() {
   const { loading } = useAuth();
@@ -117,10 +118,7 @@ function App() {
             path="/admin/tests/:id"
             element={
               <RequireAdmin>
-                <div className="container py-4">
-                  <h1>Test Details</h1>
-                  <p>Test detail view - Coming Soon!</p>
-                </div>
+                <TestDetailsPage />
               </RequireAdmin>
             }
           />

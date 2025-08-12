@@ -22,7 +22,7 @@ import {
   PaginationItem,
   PaginationLink,
 } from "reactstrap";
-import type { User } from "../types/user";
+import type { User } from "../types";
 
 interface CreateUserData {
   email: string;
@@ -65,11 +65,30 @@ const UserManagementPage: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
+      
+      // ✅ Updated to use correct endpoint /admin/users
       const response = await client.get(`/admin/users?page=${page}&limit=${pagination.limit}`);
-      setUsers(response.data.users);
-      setPagination(response.data.pagination);
+      
+      // ✅ Handle standardized response format
+      if (response.data.success) {
+        // New format: { success: true, data: [...], pagination: {...} }
+        setUsers(response.data.data || []);
+        setPagination(response.data.pagination || pagination);
+      } else if (Array.isArray(response.data.users)) {
+        // Fallback for old format: { users: [...], pagination: {...} }
+        setUsers(response.data.users);
+        setPagination(response.data.pagination || pagination);
+      } else if (Array.isArray(response.data)) {
+        // Fallback for direct array
+        setUsers(response.data);
+      } else {
+        throw new Error('Unexpected response format');
+      }
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to fetch users");
+      const errorMessage = err.response?.data?.error || 
+                          err.response?.data?.message || 
+                          "Failed to fetch users";
+      setError(errorMessage);
       console.error("Fetch users error:", err);
     } finally {
       setLoading(false);
@@ -77,7 +96,7 @@ const UserManagementPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchUsers();
+    fetchUsers(1);
   }, []);
 
   const handleCreateUser = async (e: React.FormEvent) => {
@@ -97,22 +116,48 @@ const UserManagementPage: React.FC = () => {
 
     try {
       setLoading(true);
-      const response = await client.post("/questions/admin/create-user", createData);
-      setUsers(prev => [response.data.user, ...prev]);
-      setSuccess(`${createData.role.charAt(0).toUpperCase() + createData.role.slice(1)} created successfully`);
-      setShowCreateModal(false);
-      setCreateData({
-        email: "",
-        password: "",
-        firstName: "",
-        lastName: "",
-        role: "student"
-      });
       
-      // Refresh the list to get updated pagination
-      await fetchUsers(pagination.page);
+      // ✅ Updated to use correct endpoint /admin/users
+      const response = await client.post("/admin/users", createData);
+      
+      // ✅ Handle standardized response format
+      let newUser = null;
+      let successMessage = `${createData.role.charAt(0).toUpperCase() + createData.role.slice(1)} created successfully`;
+      
+      if (response.data.success) {
+        // New format: { success: true, data: { user: {...} }, message: "..." }
+        newUser = response.data.data?.user;
+        successMessage = response.data.message || successMessage;
+      } else if (response.data.user) {
+        // Fallback for old format: { user: {...} }
+        newUser = response.data.user;
+      } else {
+        // Fallback for other formats
+        newUser = response.data;
+      }
+      
+      if (newUser) {
+        setUsers(prev => [newUser, ...prev]);
+        setSuccess(successMessage);
+        setShowCreateModal(false);
+        setCreateData({
+          email: "",
+          password: "",
+          firstName: "",
+          lastName: "",
+          role: "student"
+        });
+        
+        // Refresh the list to get updated pagination
+        await fetchUsers(pagination.page);
+      } else {
+        throw new Error('Invalid response format');
+      }
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to create user");
+      const errorMessage = err.response?.data?.error || 
+                          err.response?.data?.message || 
+                          "Failed to create user";
+      setError(errorMessage);
       console.error("Create user error:", err);
     } finally {
       setLoading(false);
@@ -124,20 +169,30 @@ const UserManagementPage: React.FC = () => {
       setError(null);
       setSuccess(null);
       
-      const response = await client.put(`/questions/admin/users/${userId}/role`, { role: newRole });
+      // ✅ Updated to use correct endpoint /admin/users/:id/role
+      const response = await client.put(`/admin/users/${userId}/role`, { role: newRole });
       
       // Update the user in the local state
       setUsers(prev => prev.map(user => 
-        user.id === userId 
+        user._id === userId  // ✅ Using _id consistently
           ? { ...user, role: newRole }
           : user
       ));
       
-      setSuccess(response.data.message);
+      // ✅ Handle standardized response format for success message
+      let successMessage = 'User role updated successfully';
+      if (response.data.success && response.data.message) {
+        successMessage = response.data.message;
+      }
+      
+      setSuccess(successMessage);
       setShowEditModal(false);
       setSelectedUser(null);
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to update user role");
+      const errorMessage = err.response?.data?.error || 
+                          err.response?.data?.message || 
+                          "Failed to update user role";
+      setError(errorMessage);
       console.error("Update user role error:", err);
     }
   };
@@ -240,7 +295,7 @@ const UserManagementPage: React.FC = () => {
                 </thead>
                 <tbody>
                   {users.map((user) => (
-                    <tr key={user.id}>
+                    <tr key={user._id}>
                       <td>
                         <div>
                           <div className="font-weight-bold">
@@ -464,21 +519,21 @@ const UserManagementPage: React.FC = () => {
                 <div className="d-grid gap-2">
                   <Button
                     color={selectedUser.role === "student" ? "primary" : "outline-primary"}
-                    onClick={() => handleUpdateUserRole(selectedUser.id, "student")}
+                    onClick={() => handleUpdateUserRole(selectedUser._id, "student")}
                     disabled={selectedUser.role === "student"}
                   >
                     Student
                   </Button>
                   <Button
                     color={selectedUser.role === "instructor" ? "warning" : "outline-warning"}
-                    onClick={() => handleUpdateUserRole(selectedUser.id, "instructor")}
+                    onClick={() => handleUpdateUserRole(selectedUser._id, "instructor")}
                     disabled={selectedUser.role === "instructor"}
                   >
                     Instructor
                   </Button>
                   <Button
                     color={selectedUser.role === "admin" ? "danger" : "outline-danger"}
-                    onClick={() => handleUpdateUserRole(selectedUser.id, "admin")}
+                    onClick={() => handleUpdateUserRole(selectedUser._id, "admin")}
                     disabled={selectedUser.role === "admin"}
                   >
                     Administrator

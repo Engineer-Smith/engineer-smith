@@ -1,4 +1,5 @@
-import React from "react";
+// src/components/tests/QuestionCreator.tsx
+import React, { useState } from "react";
 import {
   Card,
   CardBody,
@@ -6,12 +7,30 @@ import {
   FormGroup,
   Label,
   Input,
-  Row,
-  Col
+  Alert,
+  Badge,
+  Collapse,
 } from "reactstrap";
+import QuestionFormComponent from "../QuestionFormComponent";
+import type {
+  Question,
+  CreateTestData,
+  SectionWithQuestions,
+  User,
+  QuestionFormComponentProps,
+} from "../../types";
 
-import type { Question } from "../../types/questions";
-import type { CreateTestData, SectionWithQuestions } from "../../types/tests";
+// Define available skills to match Question.skill union type
+const availableSkills: Question["skill"][] = [
+  "javascript",
+  "react",
+  "html",
+  "css",
+  "python",
+  "flutter",
+  "react-native", // Fixed from react_native
+  "backend",
+];
 
 interface QuestionCreatorProps {
   newQuestions: Question[];
@@ -20,38 +39,49 @@ interface QuestionCreatorProps {
   setTestData: React.Dispatch<React.SetStateAction<CreateTestData>>;
   selectedSectionId: string | null;
   setSelectedSectionId: (id: string | null) => void;
-  user?: unknown | null; // optional, passed by parent but not required here
+  user?: User | null;
 }
 
-// --- helpers ---
-const makeNewQuestion = (defaultSkill: string | undefined): Question => {
-  // Create a minimal Question that satisfies the interface.
-  // Adjust defaults as needed for your flow.
+// Helper to create a new question template
+const createNewQuestion = (skillHint?: Question['skill']): Question => {
+  const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const validSkill = skillHint && availableSkills.includes(skillHint) ? skillHint : "javascript";
   return {
-    _id: `temp-${Date.now()}`, // temporary id until saved
+    _id: tempId,
     title: "",
     description: "",
     type: "multiple_choice",
-    skill: defaultSkill || "",
+    skill: validSkill,
     category: "",
-    difficulty: "beginner",
+    difficulty: "intermediate",
     tags: [],
-    points: 1,
-    timeEstimate: 1,
+    points: 2,
+    timeEstimate: 120,
     weight: 1,
-    status: "draft",
-    createdBy: {
-      _id: "",
-      email: "",
-      profile: { firstName: "", lastName: "" }
-    },
+    status: "pending_review",
+    createdBy: "",
     createdByRole: "instructor",
     content: {
       options: ["", "", "", ""],
       correctAnswer: 0,
       shuffleOptions: true,
       hints: [],
-      explanation: ""
+      explanation: "",
+      correctBoolean: undefined,
+      language: undefined,
+      codeSnippet: "",
+      brokenCode: "",
+      bugHint: "",
+      starterCode: "",
+      testCases: [],
+      evaluationMode: "flexible",
+      mustUse: [],
+      cannotUse: [],
+      maxLinesChanged: undefined,
+      similarityThreshold: undefined,
+      bonusPoints: 0,
+      timeLimit: 5000,
+      memoryLimit: 128,
     },
     usageStats: {
       timesUsed: 0,
@@ -60,7 +90,7 @@ const makeNewQuestion = (defaultSkill: string | undefined): Question => {
       successRate: 0,
       averageTime: 0,
       optionStats: [],
-      testCaseStats: []
+      testCaseStats: undefined,
     },
     prerequisites: [],
     followUp: [],
@@ -70,47 +100,130 @@ const makeNewQuestion = (defaultSkill: string | undefined): Question => {
     lastModified: new Date().toISOString(),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    __v: 0
+    __v: 0,
   };
 };
-
-// set by "path" e.g. "content.correctAnswer"
-function setByPath<T extends object>(obj: T, path: string, value: unknown): T {
-  const parts = path.split(".");
-  const next = { ...obj } as any;
-  let cur = next;
-  for (let i = 0; i < parts.length - 1; i++) {
-    const k = parts[i];
-    cur[k] = Array.isArray(cur[k]) ? [...cur[k]] : { ...(cur[k] ?? {}) };
-    cur = cur[k];
-  }
-  cur[parts[parts.length - 1]] = value;
-  return next;
-}
 
 const QuestionCreator: React.FC<QuestionCreatorProps> = ({
   newQuestions,
   setNewQuestions,
   testData,
-  setTestData, // not used here but kept for future wiring (e.g., auto-assign into sections)
+  setTestData,
   selectedSectionId,
   setSelectedSectionId,
 }) => {
+  const [expandedQuestionId, setExpandedQuestionId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   const addNewQuestion = () => {
-    const q = makeNewQuestion(testData.skills[0]);
-    setNewQuestions((prev) => [...prev, q]);
+    const skillHint = testData.skills.length > 0 ? testData.skills[0] : undefined;
+    const newQuestion = createNewQuestion(skillHint);
+    setNewQuestions(prev => [...prev, newQuestion]);
+    setExpandedQuestionId(newQuestion._id);
   };
 
-  const removeNewQuestion = (index: number) => {
-    setNewQuestions((prev) => prev.filter((_, i) => i !== index));
+  const removeNewQuestion = (questionId: string) => {
+    setNewQuestions(prev => prev.filter(q => q._id !== questionId));
+    if (expandedQuestionId === questionId) {
+      setExpandedQuestionId(null);
+    }
   };
 
-  const updateNewQuestion = (index: number, field: string, value: unknown) => {
-    setNewQuestions((prev) => {
-      const copy = [...prev];
-      copy[index] = setByPath(prev[index], field, value);
-      return copy;
-    });
+  const updateNewQuestion = (questionId: string, updatedQuestion: Question) => {
+    setNewQuestions(prev => prev.map(q => (q._id === questionId ? updatedQuestion : q)));
+  };
+
+  const assignQuestionToTest = (questionId: string) => {
+    const question = newQuestions.find(q => q._id === questionId);
+    if (!question) return;
+
+    if (testData.settings.useSections) {
+      if (!selectedSectionId) {
+        setErrorMessage("Please select a section first");
+        return;
+      }
+
+      setTestData(prev => ({
+        ...prev,
+        sections: prev.sections.map(section => {
+          const sectionId = section.tempId || section._id;
+          if (sectionId && sectionId === selectedSectionId) {
+            const isAlreadyAssigned = section.questions.some(q => q.questionId === questionId);
+            if (!isAlreadyAssigned) {
+              return {
+                ...section,
+                questions: [
+                  ...section.questions,
+                  {
+                    questionId,
+                    points: question.points,
+                    order: section.questions.length + 1,
+                  },
+                ],
+              };
+            }
+          }
+          return section;
+        }),
+      }));
+    } else {
+      const isAlreadyAssigned = testData.questions.some(q => q.questionId === questionId);
+      if (!isAlreadyAssigned) {
+        setTestData(prev => ({
+          ...prev,
+          questions: [...prev.questions, { questionId, points: question.points }],
+        }));
+      }
+    }
+  };
+
+  const isQuestionValid = (question: Question): boolean => {
+    if (!question.title.trim() || !question.description.trim() || !question.skill) {
+      return false;
+    }
+
+    switch (question.type) {
+      case "multiple_choice":
+        return (
+          !!question.content.options &&
+          question.content.options.length >= 2 &&
+          question.content.correctAnswer !== undefined &&
+          question.content.options.every(opt => opt.trim())
+        );
+      case "true_false":
+        return question.content.correctBoolean !== undefined;
+      case "code_challenge":
+      case "debug_fix":
+        return !!question.content.language && !!question.content.testCases && question.content.testCases.length > 0;
+      default:
+        return false;
+    }
+  };
+
+  const getValidationMessage = (question: Question): string => {
+    if (!question.title.trim()) return "Title is required";
+    if (!question.description.trim()) return "Description is required";
+    if (!question.skill) return "Skill is required";
+
+    switch (question.type) {
+      case "multiple_choice":
+        if (!question.content.options) return "Options are required";
+        if (question.content.options.length < 2) return "At least 2 options required";
+        if (question.content.correctAnswer === undefined) return "Select correct answer";
+        if (question.content.options.some(opt => !opt.trim())) return "All options must be filled";
+        break;
+      case "true_false":
+        if (question.content.correctBoolean === undefined) return "Select True or False";
+        break;
+      case "code_challenge":
+      case "debug_fix":
+        if (!question.content.language) return "Programming language required";
+        if (!question.content.testCases || question.content.testCases.length === 0)
+          return "At least one test case required";
+        break;
+    }
+
+    return "";
   };
 
   return (
@@ -144,6 +257,12 @@ const QuestionCreator: React.FC<QuestionCreatorProps> = ({
             </Input>
           </FormGroup>
         )}
+
+        {errorMessage && (
+          <Alert color="danger" className="mt-3">
+            {errorMessage}
+          </Alert>
+        )}
       </div>
 
       <div style={{ height: "calc(100vh - 350px)", overflowY: "auto" }}>
@@ -156,146 +275,83 @@ const QuestionCreator: React.FC<QuestionCreatorProps> = ({
           </div>
         ) : (
           <div className="p-3">
-            {newQuestions.map((question, index) => (
-              <Card key={question._id || index} className="mb-3">
-                <CardBody>
-                  <div className="d-flex justify-content-between align-items-center mb-3">
-                    <h6 className="mb-0">Question {index + 1}</h6>
-                    <Button
-                      color="outline-danger"
-                      size="sm"
-                      onClick={() => removeNewQuestion(index)}
-                    >
-                      Remove
-                    </Button>
-                  </div>
+            {newQuestions.map((question, index) => {
+              const isValid = isQuestionValid(question);
+              const validationMessage = getValidationMessage(question);
+              const isExpanded = expandedQuestionId === question._id;
 
-                  <Row>
-                    <Col md="8">
-                      <Input
-                        type="text"
-                        value={question.title}
-                        onChange={(e) =>
-                          updateNewQuestion(index, "title", e.target.value)
-                        }
-                        placeholder="Question title"
-                        className="mb-3"
-                      />
-                    </Col>
-                    <Col md="4">
-                      <Input
-                        type="select"
-                        value={question.type}
-                        onChange={(e) =>
-                          updateNewQuestion(index, "type", e.target.value)
-                        }
-                        className="mb-3"
-                      >
-                        <option value="multiple_choice">Multiple Choice</option>
-                        <option value="true_false">True/False</option>
-                        <option value="code_challenge">Code Challenge</option>
-                        <option value="debug_fix">Debug Fix</option>
-                      </Input>
-                    </Col>
-                  </Row>
-
-                  <Input
-                    type="textarea"
-                    value={question.description}
-                    onChange={(e) =>
-                      updateNewQuestion(index, "description", e.target.value)
-                    }
-                    placeholder="Question text"
-                    rows={2}
-                    className="mb-3"
-                  />
-
-                  {question.type === "multiple_choice" && (
-                    <div>
-                      {(question.content?.options || []).map(
-                        (option: string, optionIndex: number) => (
-                          <div
-                            key={optionIndex}
-                            className="d-flex align-items-center mb-2"
+              return (
+                <Card key={question._id} className="mb-3">
+                  <CardBody>
+                    <div className="d-flex justify-content-between align-items-start mb-3">
+                      <div className="flex-grow-1">
+                        <h6 className="mb-1">
+                          Question {index + 1}
+                          {question.title && (
+                            <span className="text-muted ms-2">- {question.title}</span>
+                          )}
+                        </h6>
+                        <div className="d-flex gap-2 mb-2">
+                          <Badge color={isValid ? "success" : "warning"}>
+                            {isValid ? "Valid" : "Incomplete"}
+                          </Badge>
+                          <Badge color="info">{question.type.replace("_", " ")}</Badge>
+                          {question.skill && <Badge color="secondary">{question.skill}</Badge>}
+                        </div>
+                        {!isValid && validationMessage && (
+                          <Alert color="warning" className="mb-2 py-1 px-2 small">
+                            {validationMessage}
+                          </Alert>
+                        )}
+                      </div>
+                      <div className="d-flex gap-2">
+                        <Button
+                          color="outline-info"
+                          size="sm"
+                          onClick={() => setExpandedQuestionId(isExpanded ? null : question._id)}
+                        >
+                          {isExpanded ? "Collapse" : "Edit"}
+                        </Button>
+                        {isValid && (
+                          <Button
+                            color="primary"
+                            size="sm"
+                            onClick={() => assignQuestionToTest(question._id)}
                           >
-                            <Input
-                              type="radio"
-                              name={`question-${index}-correct`}
-                              checked={
-                                question.content?.correctAnswer === optionIndex
-                              }
-                              onChange={() =>
-                                updateNewQuestion(
-                                  index,
-                                  "content.correctAnswer",
-                                  optionIndex
-                                )
-                              }
-                              className="me-2 mt-0"
-                            />
-                            <Input
-                              type="text"
-                              value={option}
-                              onChange={(e) => {
-                                const opts = [...(question.content?.options || [])];
-                                opts[optionIndex] = e.target.value;
-                                updateNewQuestion(
-                                  index,
-                                  "content.options",
-                                  opts
-                                );
-                              }}
-                              placeholder={`Option ${String.fromCharCode(
-                                65 + optionIndex
-                              )}`}
-                            />
-                          </div>
-                        )
-                      )}
+                            Assign
+                          </Button>
+                        )}
+                        <Button
+                          color="outline-danger"
+                          size="sm"
+                          onClick={() => removeNewQuestion(question._id)}
+                        >
+                          Remove
+                        </Button>
+                      </div>
                     </div>
-                  )}
 
-                  {question.type === "true_false" && (
-                    <div className="d-flex gap-2">
-                      <Button
-                        color={
-                          question.content?.correctBoolean === true
-                            ? "success"
-                            : "outline-success"
-                        }
-                        size="sm"
-                        onClick={() =>
-                          updateNewQuestion(
-                            index,
-                            "content.correctBoolean",
-                            true
-                          )
-                        }
-                      >
-                        True
-                      </Button>
-                      <Button
-                        color={
-                          question.content?.correctBoolean === false
-                            ? "danger"
-                            : "outline-danger"
-                        }
-                        size="sm"
-                        onClick={() =>
-                          updateNewQuestion(
-                            index,
-                            "content.correctBoolean",
-                            false
-                          )
-                        }
-                      >
-                        False
-                      </Button>
-                    </div>
-                  )}
-                </CardBody>
-              </Card>
-            ))}
+                    <Collapse isOpen={isExpanded}>
+                      <div className="border-top pt-3">
+                        <QuestionFormComponent
+                          question={question}
+                          onQuestionChange={(updatedQuestion) =>
+                            updateNewQuestion(question._id, updatedQuestion)
+                          }
+                          showSubmitButton={false}
+                          showComplexityIndicator={false}
+                          compact={true}
+                          availableSkills={
+                            testData.skills.length > 0 ? testData.skills : availableSkills
+                          }
+                          validationErrors={validationMessage ? [validationMessage] : []}
+                        />
+                      </div>
+                    </Collapse>
+                  </CardBody>
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>
