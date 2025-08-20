@@ -1,710 +1,932 @@
-// src/components/tests/ReviewPublish.tsx
 import React, { useState, useEffect } from 'react';
 import {
-  Row,
-  Col,
-  Button,
-  Card,
-  CardBody,
-  CardHeader,
-  Alert,
-  Badge,
-  ListGroup,
-  ListGroupItem,
-  Table,
-  Modal,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
-  Progress
+    Row,
+    Col,
+    Card,
+    CardBody,
+    CardTitle,
+    Button,
+    Alert,
+    Badge,
+    Table,
+    FormGroup,
+    Label,
+    Input,
+    Modal,
+    ModalHeader,
+    ModalBody,
+    ModalFooter,
+    Progress,
+    ButtonGroup,
+    Collapse
 } from 'reactstrap';
+import {
+    ArrowLeft,
+    CheckCircle,
+    AlertTriangle,
+    Globe,
+    Building,
+    Clock,
+    Users,
+    Target,
+    FileText,
+    Settings,
+    Eye,
+    Send,
+    Edit3,
+    Info,
+    X,
+    BarChart3,
+    Layers,
+    TrendingUp,
+    Shield
+} from 'lucide-react';
+import apiService from '../../services/ApiService';
+import { createTestPayload } from '../../types/createTest';
+import type { WizardStepProps, CreateTestData } from '../../types/createTest';
+import type { ValidationItem, TestStatus } from '../../types';
+import type { ChangeEvent } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { testAPI, questionAPI } from '../../services/testAPI';
-import type { Question, CreateTestData } from '../../types';
 
-interface ReviewPublishProps {
-  testData: CreateTestData;
-  setTestData: React.Dispatch<React.SetStateAction<CreateTestData>>;
-  onPrevious: () => void;
-  onComplete: () => void;
-  setError: (error: string | null) => void;
-  setLoading: (loading: boolean) => void;
+// Interface for estimated metrics
+interface EstimatedMetrics {
+    avgTimePerQuestion: number;
+    estimatedCompletionRate: number;
+    estimatedPassRate: number;
+    difficultyScore: number;
+    totalQuestions: number;
+    totalPoints: number;
+    avgPointsPerQuestion: number;
 }
 
-interface ValidationResult {
-  valid: boolean;
-  errors: string[];
-  warnings: string[];
-}
-
-const ReviewPublish: React.FC<ReviewPublishProps> = ({
-  testData,
-  setTestData,
-  onPrevious,
-  onComplete,
-  setError,
-  setLoading
+const ReviewPublish: React.FC<WizardStepProps> = ({
+    testData,
+    setTestData,
+    onPrevious,
+    onComplete,
+    setError,
+    setLoading
 }) => {
-  const { client } = useAuth();
-  const [questions, setQuestions] = useState<Question[]>([]);
-  const [validation, setValidation] = useState<ValidationResult>({ valid: true, errors: [], warnings: [] });
-  const [showPreview, setShowPreview] = useState(false);
-  const [publishing, setPublishing] = useState(false);
-  const [newQuestionIds, setNewQuestionIds] = useState<string[]>([]);
-
-  useEffect(() => {
-    loadQuestions();
-    validateTest();
-  }, [testData]);
-
-  const loadQuestions = async () => {
-    try {
-      const questionIds = getAllQuestionIds();
-      if (questionIds.length === 0) return;
-
-      const response = await client.get(`/questions?ids=${questionIds.join(',')}`);
-      setQuestions(response.data.questions || []);
-    } catch (error) {
-      console.error('Failed to load questions:', error);
-    }
-  };
-
-  const getAllQuestionIds = () => {
-    const ids = new Set<string>();
-    
-    if (testData.settings.useSections) {
-      testData.sections.forEach(section => {
-        section.questions.forEach(q => ids.add(q.questionId));
-      });
-    } else {
-      testData.questions.forEach(q => ids.add(q.questionId));
-    }
-    
-    return Array.from(ids);
-  };
-
-  const validateTest = () => {
-    const errors: string[] = [];
-    const warnings: string[] = [];
-
-    // Basic validation
-    if (!testData.title.trim()) errors.push('Test title is required');
-    if (!testData.description.trim()) errors.push('Test description is required');
-    if (testData.skills.length === 0) errors.push('At least one skill must be selected');
-
-    // Question validation
-    const totalQuestions = getTotalQuestions();
-    if (totalQuestions === 0) {
-      errors.push('Test must have at least one question');
-    } else if (totalQuestions < 5) {
-      warnings.push('Consider adding more questions for a comprehensive assessment');
-    }
-
-    // Section validation (if using sections)
-    if (testData.settings.useSections) {
-      if (testData.sections.length === 0) {
-        errors.push('Section-based test must have at least one section');
-      }
-
-      testData.sections.forEach((section, index) => {
-        if (!section.name.trim()) {
-          errors.push(`Section ${index + 1} must have a name`);
-        }
-        if (section.timeLimit <= 0) {
-          errors.push(`Section ${index + 1} must have a positive time limit`);
-        }
-        if (!section.questionPool.enabled && section.questions.length === 0) {
-          warnings.push(`Section "${section.name}" has no questions assigned`);
-        }
-      });
-
-      const totalTime = testData.sections.reduce((sum, s) => sum + s.timeLimit, 0);
-      if (totalTime > 240) {
-        warnings.push('Total test time exceeds 4 hours - consider breaking into multiple tests');
-      }
-    } else {
-      // Simple test validation
-      if (testData.settings.timeLimit <= 0) {
-        errors.push('Test time limit must be positive');
-      }
-      if (testData.settings.timeLimit > 240) {
-        warnings.push('Test time limit exceeds 4 hours');
-      }
-    }
-
-    // Score validation
-    if (testData.settings.passingScore < 0 || testData.settings.passingScore > 100) {
-      errors.push('Passing score must be between 0 and 100');
-    }
-
-    // Time estimation
-    const estimatedTime = getEstimatedTime();
-    const allocatedTime = testData.settings.useSections 
-      ? testData.sections.reduce((sum, s) => sum + s.timeLimit, 0)
-      : testData.settings.timeLimit;
-    
-    if (estimatedTime > allocatedTime * 1.2) {
-      warnings.push('Allocated time may be insufficient based on question complexity');
-    }
-
-    setValidation({
-      valid: errors.length === 0,
-      errors,
-      warnings
+    const { user, isAuthenticated } = useAuth();
+    const [publishModal, setPublishModal] = useState(false);
+    const [publishStatus, setPublishStatus] = useState<TestStatus>('draft');
+    const [showDetailedPreview, setShowDetailedPreview] = useState(false);
+    const [validationDetails, setValidationDetails] = useState<ValidationItem[]>([]);
+    const [estimatedMetrics, setEstimatedMetrics] = useState<EstimatedMetrics>({
+        avgTimePerQuestion: 0,
+        estimatedCompletionRate: 0,
+        estimatedPassRate: 0,
+        difficultyScore: 0,
+        totalQuestions: 0,
+        totalPoints: 0,
+        avgPointsPerQuestion: 0
     });
-  };
 
-  const getTotalQuestions = () => {
-    if (testData.settings.useSections) {
-      return testData.sections.reduce((total, section) => {
-        if (section.questionPool.enabled) {
-          return total + (section.questionPool.totalQuestions || 0);
-        }
-        return total + section.questions.length;
-      }, 0);
-    }
-    return testData.questions.length;
-  };
+    useEffect(() => {
+        calculateEstimatedMetrics();
+        performDetailedValidation();
+    }, [testData]);
 
-  const getTotalPoints = () => {
-    if (testData.settings.useSections) {
-      return testData.sections.reduce((total, section) => {
-        if (section.questionPool.enabled) {
-          return total + (section.questionPool.totalQuestions || 0) * 2; // Estimate
-        }
-        return total + section.questions.reduce((sectionTotal, q) => {
-          const question = questions.find(qq => qq._id === q.questionId);
-          return sectionTotal + (question?.points || q.points || 1);
-        }, 0);
-      }, 0);
-    } else {
-      return testData.questions.reduce((total, q) => {
-        const question = questions.find(qq => qq._id === q.questionId);
-        return total + (question?.points || q.points || 1);
-      }, 0);
-    }
-  };
+    const calculateEstimatedMetrics = () => {
+        const totalQuestions = getTotalQuestions();
+        const totalPoints = getTotalPoints();
+        const timeLimit = testData.settings.timeLimit;
 
-  const getEstimatedTime = () => {
-    if (testData.settings.useSections) {
-      return testData.sections.reduce((total, section) => {
-        if (section.questionPool.enabled) {
-          return total + (section.questionPool.totalQuestions || 0) * 2; // 2 min average
-        }
-        return total + section.questions.reduce((sectionTotal, q) => {
-          const question = questions.find(qq => qq._id === q.questionId);
-          return sectionTotal + (question?.timeEstimate || 120) / 60; // Convert to minutes
-        }, 0);
-      }, 0);
-    } else {
-      return testData.questions.reduce((total, q) => {
-        const question = questions.find(qq => qq._id === q.questionId);
-        return total + (question?.timeEstimate || 120) / 60;
-      }, 0);
-    }
-  };
+        const avgTimePerQuestion = timeLimit / Math.max(totalQuestions, 1);
+        const difficultyScore = calculateDifficultyScore();
+        const completionRate = Math.max(0.6, Math.min(0.95, 1 - (difficultyScore * 0.2)));
 
-  const getQuestionsByType = () => {
-    const counts = {
-      multiple_choice: 0,
-      true_false: 0,
-      code_challenge: 0,
-      debug_fix: 0
+        setEstimatedMetrics({
+            avgTimePerQuestion: Math.round(avgTimePerQuestion * 10) / 10,
+            estimatedCompletionRate: Math.round(completionRate * 100),
+            estimatedPassRate: Math.round((completionRate * 0.75) * 100),
+            difficultyScore: Math.round(difficultyScore * 100) / 100,
+            totalQuestions,
+            totalPoints,
+            avgPointsPerQuestion: Math.round((totalPoints / Math.max(totalQuestions, 1)) * 10) / 10
+        });
     };
 
-    const questionIds = getAllQuestionIds();
-    questionIds.forEach(id => {
-      const question = questions.find(q => q._id === id);
-      if (question && counts.hasOwnProperty(question.type)) {
-        counts[question.type as keyof typeof counts]++;
-      }
-    });
+    const calculateDifficultyScore = () => {
+        const languages = testData.languages.length;
+        const tags = testData.tags.length;
+        const sectioned = testData.settings.useSections ? 0.1 : 0;
 
-    return counts;
-  };
+        return Math.min(5, (languages * 0.2) + (tags * 0.1) + sectioned + 1.5) / 5;
+    };
 
-  const getQuestionsByDifficulty = () => {
-    const counts = { beginner: 0, intermediate: 0, advanced: 0 };
+    const performDetailedValidation = () => {
+        const issues: ValidationItem[] = [];
+        const warnings: ValidationItem[] = [];
+        const suggestions: ValidationItem[] = [];
 
-    const questionIds = getAllQuestionIds();
-    questionIds.forEach(id => {
-      const question = questions.find(q => q._id === id);
-      if (question && counts.hasOwnProperty(question.difficulty)) {
-        counts[question.difficulty as keyof typeof counts]++;
-      }
-    });
-
-    return counts;
-  };
-
-  const handleSaveDraft = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Create the test as draft
-      const response = await testAPI.createTest(testData);
-
-      if (response.success) {
-        onComplete();
-      } else {
-        setError(response.message || 'Failed to save test');
-      }
-    } catch (error: any) {
-      setError(error.message || 'Failed to save test');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handlePublish = async () => {
-    if (!validation.valid) {
-      setError('Please fix validation errors before publishing');
-      return;
-    }
-
-    try {
-      setPublishing(true);
-      setError(null);
-
-      // First create the test
-      const createResponse = await testAPI.createTest(testData);
-
-      if (createResponse.success) {
-        // Then publish it
-        const publishResponse = await testAPI.publishTest(createResponse.test._id);
-        
-        if (publishResponse.success) {
-          onComplete();
-        } else {
-          setError(publishResponse.message || 'Failed to publish test');
+        // Required field validation
+        if (!testData.title.trim()) {
+            issues.push({ type: 'error', field: 'title', message: 'Test title is required' });
         }
-      } else {
-        setError(createResponse.message || 'Failed to create test');
-      }
-    } catch (error: any) {
-      setError(error.message || 'Failed to publish test');
-    } finally {
-      setPublishing(false);
-    }
-  };
+        if (!testData.description.trim()) {
+            issues.push({ type: 'error', field: 'description', message: 'Test description is required' });
+        }
+        if (!testData.languages.length) {
+            issues.push({ type: 'error', field: 'languages', message: 'At least one programming language must be selected' });
+        }
+        if (!testData.tags.length) {
+            issues.push({ type: 'error', field: 'tags', message: 'At least one topic/tag must be selected' });
+        }
 
-  const formatTime = (minutes: number) => {
-    const hours = Math.floor(minutes / 60);
-    const mins = Math.round(minutes % 60);
-    if (hours > 0) {
-      return `${hours}h ${mins}m`;
-    }
-    return `${mins}m`;
-  };
-
-  const questionsByType = getQuestionsByType();
-  const questionsByDifficulty = getQuestionsByDifficulty();
-
-  return (
-    <div>
-      {/* Validation Summary */}
-      {!validation.valid && (
-        <Alert color="danger" className="mb-4">
-          <h6>⚠️ Validation Errors</h6>
-          <ul className="mb-0">
-            {validation.errors.map((error, index) => (
-              <li key={index}>{error}</li>
-            ))}
-          </ul>
-        </Alert>
-      )}
-
-      {validation.warnings.length > 0 && (
-        <Alert color="warning" className="mb-4">
-          <h6>⚠️ Warnings</h6>
-          <ul className="mb-0">
-            {validation.warnings.map((warning, index) => (
-              <li key={index}>{warning}</li>
-            ))}
-          </ul>
-        </Alert>
-      )}
-
-      {validation.valid && (
-        <Alert color="success" className="mb-4">
-          <h6>✅ Test Ready</h6>
-          <p className="mb-0">Your test has passed validation and is ready to publish!</p>
-        </Alert>
-      )}
-
-      <Row>
-        {/* Test Overview */}
-        <Col lg="8">
-          <Card className="mb-4">
-            <CardHeader>
-              <h5 className="mb-0">Test Overview</h5>
-            </CardHeader>
-            <CardBody>
-              <Row>
-                <Col md="6">
-                  <div className="mb-3">
-                    <strong>Title:</strong> {testData.title}
-                  </div>
-                  <div className="mb-3">
-                    <strong>Type:</strong> {testData.testType.replace('_', ' ')}
-                  </div>
-                  <div className="mb-3">
-                    <strong>Skills:</strong>
-                    <div className="mt-1">
-                      {testData.skills.map(skill => (
-                        <Badge key={skill} color="info" className="me-1">
-                          {skill}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                </Col>
-                <Col md="6">
-                  <div className="mb-3">
-                    <strong>Structure:</strong> {testData.settings.useSections ? 'Section-based' : 'Simple'}
-                  </div>
-                  <div className="mb-3">
-                    <strong>Questions:</strong> {getTotalQuestions()}
-                  </div>
-                  <div className="mb-3">
-                    <strong>Total Points:</strong> {getTotalPoints()}
-                  </div>
-                </Col>
-              </Row>
-              
-              <div className="mb-3">
-                <strong>Description:</strong>
-                <p className="text-muted mb-0 mt-1">{testData.description}</p>
-              </div>
-
-              {testData.instructions && (
-                <div className="mb-3">
-                  <strong>Instructions:</strong>
-                  <p className="text-muted mb-0 mt-1">{testData.instructions}</p>
-                </div>
-              )}
-            </CardBody>
-          </Card>
-
-          {/* Sections (if using sections) */}
-          {testData.settings.useSections && (
-            <Card className="mb-4">
-              <CardHeader>
-                <h5 className="mb-0">Sections ({testData.sections.length})</h5>
-              </CardHeader>
-              <CardBody className="p-0">
-                <ListGroup flush>
-                  {testData.sections.map((section, index) => (
-                    <ListGroupItem key={section.tempId || section._id || index}>
-                      <div className="d-flex justify-content-between align-items-start">
-                        <div>
-                          <h6 className="mb-1">{section.name}</h6>
-                          <p className="text-muted small mb-2">
-                            {section.description || `${section.sectionType} section`}
-                          </p>
-                          <div>
-                            <Badge color="secondary" className="me-2">
-                              {section.timeLimit} minutes
-                            </Badge>
-                            <Badge color="info" className="me-2">
-                              {section.questionPool.enabled 
-                                ? `${section.questionPool.totalQuestions} questions (pool)`
-                                : `${section.questions.length} questions`
-                              }
-                            </Badge>
-                            <Badge color="outline-primary">
-                              {section.sectionType}
-                            </Badge>
-                          </div>
-                        </div>
-                      </div>
-                    </ListGroupItem>
-                  ))}
-                </ListGroup>
-              </CardBody>
-            </Card>
-          )}
-
-          {/* Question Preview */}
-          <Card>
-            <CardHeader className="d-flex justify-content-between align-items-center">
-              <h5 className="mb-0">Question Distribution</h5>
-              <Button color="outline-primary" size="sm" onClick={() => setShowPreview(true)}>
-                Preview Questions
-              </Button>
-            </CardHeader>
-            <CardBody>
-              <Row>
-                <Col md="6">
-                  <h6>By Type</h6>
-                  <Table size="sm" className="mb-3">
-                    <tbody>
-                      <tr>
-                        <td>Multiple Choice</td>
-                        <td>{questionsByType.multiple_choice}</td>
-                      </tr>
-                      <tr>
-                        <td>True/False</td>
-                        <td>{questionsByType.true_false}</td>
-                      </tr>
-                      <tr>
-                        <td>Code Challenge</td>
-                        <td>{questionsByType.code_challenge}</td>
-                      </tr>
-                      <tr>
-                        <td>Debug & Fix</td>
-                        <td>{questionsByType.debug_fix}</td>
-                      </tr>
-                    </tbody>
-                  </Table>
-                </Col>
-                <Col md="6">
-                  <h6>By Difficulty</h6>
-                  <Table size="sm" className="mb-3">
-                    <tbody>
-                      <tr>
-                        <td>Beginner</td>
-                        <td>{questionsByDifficulty.beginner}</td>
-                      </tr>
-                      <tr>
-                        <td>Intermediate</td>
-                        <td>{questionsByDifficulty.intermediate}</td>
-                      </tr>
-                      <tr>
-                        <td>Advanced</td>
-                        <td>{questionsByDifficulty.advanced}</td>
-                      </tr>
-                    </tbody>
-                  </Table>
-                </Col>
-              </Row>
-            </CardBody>
-          </Card>
-        </Col>
-
-        {/* Summary Sidebar */}
-        <Col lg="4">
-          <Card className="mb-4">
-            <CardHeader>
-              <h6 className="mb-0">Test Summary</h6>
-            </CardHeader>
-            <CardBody>
-              <div className="text-center mb-3">
-                <div className="d-flex justify-content-between align-items-center mb-2">
-                  <span>Questions</span>
-                  <strong>{getTotalQuestions()}</strong>
-                </div>
-                <div className="d-flex justify-content-between align-items-center mb-2">
-                  <span>Total Points</span>
-                  <strong>{getTotalPoints()}</strong>
-                </div>
-                <div className="d-flex justify-content-between align-items-center mb-2">
-                  <span>Estimated Time</span>
-                  <strong>{formatTime(getEstimatedTime())}</strong>
-                </div>
-                <div className="d-flex justify-content-between align-items-center mb-2">
-                  <span>Allocated Time</span>
-                  <strong>
-                    {testData.settings.useSections 
-                      ? formatTime(testData.sections.reduce((sum, s) => sum + s.timeLimit, 0))
-                      : formatTime(testData.settings.timeLimit)
+        // Structure validation
+        if (testData.settings.useSections) {
+            if (!testData.sections.length) {
+                issues.push({ type: 'error', field: 'sections', message: 'At least one section is required' });
+            } else {
+                testData.sections.forEach((section, index) => {
+                    if (!section.name.trim()) {
+                        issues.push({ type: 'error', field: `section-${index}`, message: `Section ${index + 1} needs a name` });
                     }
-                  </strong>
-                </div>
-                <hr />
-                <div className="d-flex justify-content-between align-items-center">
-                  <span>Passing Score</span>
-                  <strong>{testData.settings.passingScore}%</strong>
-                </div>
-              </div>
-            </CardBody>
-          </Card>
+                    if (!section.questions.length) {
+                        issues.push({ type: 'error', field: `section-${index}`, message: `Section "${section.name}" needs questions` });
+                    }
+                });
+            }
+        } else {
+            if (!testData.questions.length) {
+                issues.push({ type: 'error', field: 'questions', message: 'At least one question is required' });
+            }
+        }
 
-          <Card className="mb-4">
-            <CardHeader>
-              <h6 className="mb-0">Settings</h6>
-            </CardHeader>
-            <CardBody>
-              <div className="small">
-                <div className="mb-2">
-                  <strong>Attempts:</strong> {testData.settings.attemptsAllowed}
-                </div>
-                <div className="mb-2">
-                  <strong>Shuffle Questions:</strong> {testData.settings.shuffleQuestions ? 'Yes' : 'No'}
-                </div>
-                <div className="mb-2">
-                  <strong>Shuffle Options:</strong> {testData.settings.shuffleOptions ? 'Yes' : 'No'}
-                </div>
-                <div className="mb-2">
-                  <strong>Show Results:</strong> {testData.settings.showResults ? 'Yes' : 'No'}
-                </div>
-                <div className="mb-2">
-                  <strong>Show Correct Answers:</strong> {testData.settings.showCorrectAnswers ? 'Yes' : 'No'}
-                </div>
-                {testData.settings.availableFrom && (
-                  <div className="mb-2">
-                    <strong>Available From:</strong><br />
-                    <small>{new Date(testData.settings.availableFrom).toLocaleString()}</small>
-                  </div>
-                )}
-                {testData.settings.availableUntil && (
-                  <div className="mb-2">
-                    <strong>Available Until:</strong><br />
-                    <small>{new Date(testData.settings.availableUntil).toLocaleString()}</small>
-                  </div>
-                )}
-              </div>
-            </CardBody>
-          </Card>
+        // Settings validation
+        if (testData.settings.timeLimit <= 0) {
+            issues.push({ type: 'error', field: 'timeLimit', message: 'Time limit must be greater than 0' });
+        }
+        if (testData.settings.attemptsAllowed <= 0) {
+            issues.push({ type: 'error', field: 'attemptsAllowed', message: 'Attempts allowed must be greater than 0' });
+        }
 
-          {/* Action Buttons */}
-          <div className="d-grid gap-2">
-            <Button 
-              color="success" 
-              size="lg"
-              onClick={handlePublish}
-              disabled={!validation.valid || publishing}
-            >
-              {publishing ? (
-                <>
-                  <span className="spinner-border spinner-border-sm me-2" />
-                  Publishing...
-                </>
-              ) : (
-                '🚀 Publish Test'
-              )}
-            </Button>
-            
-            <Button 
-              color="outline-primary"
-              onClick={handleSaveDraft}
-              disabled={publishing}
-            >
-              💾 Save as Draft
-            </Button>
-          </div>
+        // Warnings for best practices
+        if (testData.settings.timeLimit > 180) {
+            warnings.push({ type: 'warning', field: 'timeLimit', message: 'Very long tests may lead to fatigue' });
+        }
+        if (testData.settings.attemptsAllowed > 3) {
+            warnings.push({ type: 'warning', field: 'attemptsAllowed', message: 'Many attempts may reduce assessment value' });
+        }
+        if (getTotalQuestions() < 5) {
+            warnings.push({ type: 'warning', field: 'questions', message: 'Consider adding more questions for thorough assessment' });
+        }
 
-          <div className="mt-3 small text-muted text-center">
-            <p className="mb-1">
-              <strong>Published tests</strong> will be immediately available to students.
-            </p>
-            <p className="mb-0">
-              <strong>Draft tests</strong> can be edited later before publishing.
-            </p>
-          </div>
-        </Col>
-      </Row>
+        // Suggestions for optimization
+        if (!testData.settings.shuffleQuestions) {
+            suggestions.push({ type: 'suggestion', field: 'shuffle', message: 'Consider enabling question shuffling to prevent cheating' });
+        }
+        if (testData.testType === 'custom' && testData.languages.length > 1) {
+            suggestions.push({ type: 'suggestion', field: 'structure', message: 'Multi-language tests work well with sections' });
+        }
 
-      {/* Question Preview Modal */}
-      <Modal isOpen={showPreview} toggle={() => setShowPreview(false)} size="xl">
-        <ModalHeader toggle={() => setShowPreview(false)}>
-          Question Preview
-        </ModalHeader>
-        <ModalBody style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-          {testData.settings.useSections ? (
-            // Section-based preview
-            testData.sections.map((section, sectionIndex) => (
-              <div key={section.tempId || section._id || sectionIndex} className="mb-4">
-                <h6 className="border-bottom pb-2">
-                  Section {sectionIndex + 1}: {section.name}
-                  <Badge color="info" className="ms-2">
-                    {section.timeLimit} minutes
-                  </Badge>
-                </h6>
-                
-                {section.questionPool.enabled ? (
-                  <Alert color="info">
-                    <strong>Question Pool:</strong> {section.questionPool.totalQuestions} questions 
-                    will be randomly selected using {section.questionPool.selectionStrategy} strategy.
-                  </Alert>
-                ) : (
-                  <div className="ms-3">
-                    {section.questions.map((q, qIndex) => {
-                      const question = questions.find(qq => qq._id === q.questionId);
-                      return question ? (
-                        <div key={qIndex} className="mb-2 p-2 border-start border-3 border-light">
-                          <div className="d-flex justify-content-between align-items-start">
-                            <div>
-                              <strong>{question.title}</strong>
-                              <div className="small text-muted">{question.description.substring(0, 100)}...</div>
-                            </div>
-                            <div className="text-end">
-                              <Badge color="secondary">{question.type}</Badge>
-                              <div className="small text-muted">{q.points} pts</div>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div key={qIndex} className="mb-2 p-2 bg-light text-muted">
-                          Question not found (ID: {q.questionId})
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            ))
-          ) : (
-            // Simple test preview
-            <div>
-              <h6 className="mb-3">All Questions ({testData.questions.length})</h6>
-              {testData.questions.map((q, index) => {
-                const question = questions.find(qq => qq._id === q.questionId);
-                return question ? (
-                  <div key={index} className="mb-3 p-3 border rounded">
-                    <div className="d-flex justify-content-between align-items-start">
-                      <div className="flex-grow-1">
-                        <h6>{question.title}</h6>
-                        <p className="text-muted mb-2">{question.description}</p>
-                        <div>
-                          <Badge color="info" className="me-2">{question.type}</Badge>
-                          <Badge color="secondary" className="me-2">{question.skill}</Badge>
-                          <Badge color="outline-primary">{question.difficulty}</Badge>
-                        </div>
-                      </div>
-                      <div className="text-end">
-                        <div className="fw-bold">{q.points} pts</div>
-                        <div className="small text-muted">~{Math.ceil((question.timeEstimate || 120) / 60)} min</div>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div key={index} className="mb-2 p-2 bg-light text-muted">
-                    Question not found (ID: {q.questionId})
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </ModalBody>
-        <ModalFooter>
-          <Button color="secondary" onClick={() => setShowPreview(false)}>
-            Close
-          </Button>
-        </ModalFooter>
-      </Modal>
+        setValidationDetails([...issues, ...warnings, ...suggestions]);
+    };
 
-      {/* Navigation */}
-      <div className="d-flex justify-content-between pt-3 border-top">
-        <Button color="secondary" onClick={onPrevious}>
-          Previous: Add Questions
-        </Button>
+    const getTotalQuestions = () => {
+        if (testData.settings.useSections) {
+            return testData.sections.reduce((sum, section) => sum + section.questions.length, 0);
+        }
+        return testData.questions.length;
+    };
+
+    const getTotalPoints = () => {
+        if (testData.settings.useSections) {
+            return testData.sections.reduce((sum, section) =>
+                sum + section.questions.reduce((sectionSum, q) => sectionSum + q.points, 0), 0
+            );
+        }
+        return testData.questions.reduce((sum, q) => sum + q.points, 0);
+    };
+
+    const getValidationIssues = () => {
+        return validationDetails.filter(item => item.type === 'error');
+    };
+
+    const handlePublish = async () => {
+        if (!isAuthenticated || !user || !['admin', 'instructor'].includes(user.role)) {
+            setError('Unauthorized: Only admins or instructors can publish tests');
+            return;
+        }
+
+        const issues = getValidationIssues();
+        if (issues.length > 0) {
+            setError(`Cannot publish test with validation issues: ${issues.map(i => i.message).join(', ')}`);
+            return;
+        }
+
+        setLoading?.(true);
+        try {
+            const payload = createTestPayload({ ...testData, status: publishStatus });
+            const response = await apiService.createTest(payload);
+
+            if (response.error) {
+                setError(response.message || 'Failed to create test');
+                return;
+            }
+
+            setPublishModal(false);
+            onComplete?.();
+        } catch (error) {
+            console.error('Error creating test:', error);
+            setError(error instanceof Error ? error.message : 'Failed to create test');
+        } finally {
+            setLoading?.(false);
+        }
+    };
+
+    const handlePreview = () => {
+        console.log('Preview Test Data:', {
+            title: testData.title,
+            description: testData.description,
+            testType: testData.testType,
+            languages: testData.languages,
+            tags: testData.tags,
+            settings: testData.settings,
+            sections: testData.settings.useSections ? testData.sections : undefined,
+            questions: !testData.settings.useSections ? testData.questions : undefined
+        });
+        alert('Previewing test in console. Check developer tools for details.');
+    };
+
+    const getStatusColor = (status: TestStatus) => {
+        switch (status) {
+            case 'draft': return 'warning';
+            case 'active': return 'success';
+            case 'archived': return 'secondary';
+            default: return 'secondary';
+        }
+    };
+
+    const getValidationIcon = () => {
+        const errors = validationDetails.filter(v => v.type === 'error').length;
+        const warnings = validationDetails.filter(v => v.type === 'warning').length;
+
+        if (errors > 0) return { icon: AlertTriangle, color: 'danger', text: `${errors} issues` };
+        if (warnings > 0) return { icon: AlertTriangle, color: 'warning', text: `${warnings} warnings` };
+        return { icon: CheckCircle, color: 'success', text: 'Ready to publish' };
+    };
+
+    const validationIcon = getValidationIcon();
+    const ValidationIcon = validationIcon.icon;
+
+    const handleStatusChange = (e: ChangeEvent<HTMLSelectElement>) => {
+        setPublishStatus(e.target.value as TestStatus);
+    };
+
+    return (
         <div>
-          <Button color="outline-primary" className="me-2" onClick={handleSaveDraft}>
-            Save as Draft
-          </Button>
-          <Button 
-            color="success" 
-            onClick={handlePublish}
-            disabled={!validation.valid}
-          >
-            Publish Test
-          </Button>
+            {isAuthenticated && user && ['admin', 'instructor'].includes(user.role) ? (
+                <Row>
+                    <Col lg={8}>
+                        {/* Validation Status */}
+                        <Card className="border-0 shadow-sm mb-4">
+                            <CardBody>
+                                <CardTitle tag="h6" className="d-flex align-items-center justify-content-between mb-3">
+                                    <div className="d-flex align-items-center">
+                                        <ValidationIcon size={20} className={`me-2 text-${validationIcon.color}`} />
+                                        Validation Status
+                                    </div>
+                                    <Button
+                                        color="outline-info"
+                                        size="sm"
+                                        onClick={() => setShowDetailedPreview(!showDetailedPreview)}
+                                    >
+                                        {showDetailedPreview ? <Eye size={14} /> : <Eye size={14} />}
+                                        {showDetailedPreview ? ' Hide Details' : ' Show Details'}
+                                    </Button>
+                                </CardTitle>
+
+                                <Alert color={validationIcon.color} className="mb-3">
+                                    <ValidationIcon size={16} className="me-2" />
+                                    <strong>{validationIcon.text}</strong>
+                                    <div className="mt-1 small">
+                                        {getValidationIssues().length === 0
+                                            ? 'Your test passes all validation checks and is ready to publish!'
+                                            : 'Please fix the validation issues below before publishing.'
+                                        }
+                                    </div>
+                                </Alert>
+
+                                <Collapse isOpen={showDetailedPreview}>
+                                    {validationDetails.map((item, index) => (
+                                        <Alert
+                                            key={index}
+                                            color={item.type === 'error' ? 'danger' : item.type === 'warning' ? 'warning' : 'info'}
+                                            className="py-2 mb-2"
+                                        >
+                                            <div className="d-flex align-items-center">
+                                                {item.type === 'error' ? <X size={14} className="me-2" /> :
+                                                    item.type === 'warning' ? <AlertTriangle size={14} className="me-2" /> :
+                                                        <Info size={14} className="me-2" />}
+                                                <div>
+                                                    <strong>{item.field}:</strong> {item.message}
+                                                </div>
+                                            </div>
+                                        </Alert>
+                                    ))}
+                                </Collapse>
+                            </CardBody>
+                        </Card>
+
+                        {/* Test Overview */}
+                        <Card className="border-0 shadow-sm mb-4">
+                            <CardBody>
+                                <CardTitle tag="h6" className="d-flex align-items-center mb-3">
+                                    <FileText size={20} className="me-2" />
+                                    Test Overview
+                                </CardTitle>
+
+                                <Row>
+                                    <Col md={8}>
+                                        <Table borderless className="mb-0">
+                                            <tbody>
+                                                <tr>
+                                                    <td width="30%" className="fw-bold">Title:</td>
+                                                    <td>{testData.title || <em className="text-muted">Not set</em>}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="fw-bold">Description:</td>
+                                                    <td>{testData.description || <em className="text-muted">Not set</em>}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="fw-bold">Template:</td>
+                                                    <td>
+                                                        <Badge color="info">
+                                                            {testData.testType ? testData.testType.replace('_', ' ').toUpperCase() : 'CUSTOM'}
+                                                        </Badge>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="fw-bold">Structure:</td>
+                                                    <td>
+                                                        <Badge color="primary">
+                                                            {testData.settings.useSections ? (
+                                                                <>
+                                                                    <Layers size={12} className="me-1" />
+                                                                    Sectioned Test
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <FileText size={12} className="me-1" />
+                                                                    Single Test
+                                                                </>
+                                                            )}
+                                                        </Badge>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="fw-bold">Visibility:</td>
+                                                    <td>
+                                                        <Badge color={testData.isGlobal ? 'primary' : 'secondary'}>
+                                                            {testData.isGlobal ? (
+                                                                <>
+                                                                    <Globe size={12} className="me-1" />
+                                                                    Global
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <Building size={12} className="me-1" />
+                                                                    Organization
+                                                                </>
+                                                            )}
+                                                        </Badge>
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </Table>
+                                    </Col>
+                                    <Col md={4}>
+                                        <Card className="bg-light border-0">
+                                            <CardBody className="text-center">
+                                                <h6 className="mb-3">Quick Stats</h6>
+                                                <div className="d-flex justify-content-around">
+                                                    <div>
+                                                        <div className="h5 mb-0 text-primary">{getTotalQuestions()}</div>
+                                                        <small className="text-muted">Questions</small>
+                                                    </div>
+                                                    <div>
+                                                        <div className="h5 mb-0 text-success">{getTotalPoints()}</div>
+                                                        <small className="text-muted">Points</small>
+                                                    </div>
+                                                    <div>
+                                                        <div className="h5 mb-0 text-warning">{testData.settings.timeLimit}</div>
+                                                        <small className="text-muted">Minutes</small>
+                                                    </div>
+                                                </div>
+                                            </CardBody>
+                                        </Card>
+                                    </Col>
+                                </Row>
+                            </CardBody>
+                        </Card>
+
+                        {/* Languages and Topics */}
+                        <Card className="border-0 shadow-sm mb-4">
+                            <CardBody>
+                                <CardTitle tag="h6" className="d-flex align-items-center mb-3">
+                                    <Target size={20} className="me-2" />
+                                    Languages & Topics
+                                </CardTitle>
+
+                                <Row>
+                                    <Col md={6}>
+                                        <Label className="fw-bold">Programming Languages ({testData.languages.length}):</Label>
+                                        <div className="mb-3">
+                                            {testData.languages.length > 0 ? (
+                                                testData.languages.map((lang) => (
+                                                    <Badge key={lang} color="secondary" className="me-2 mb-1">
+                                                        {lang}
+                                                    </Badge>
+                                                ))
+                                            ) : (
+                                                <em className="text-muted">None selected</em>
+                                            )}
+                                        </div>
+                                    </Col>
+                                    <Col md={6}>
+                                        <Label className="fw-bold">Topics & Skills ({testData.tags.length}):</Label>
+                                        <div>
+                                            {testData.tags.length > 0 ? (
+                                                <div>
+                                                    {testData.tags.slice(0, 8).map((tag) => (
+                                                        <Badge key={tag} color="light" className="me-1 mb-1">
+                                                            {tag}
+                                                        </Badge>
+                                                    ))}
+                                                    {testData.tags.length > 8 && (
+                                                        <Badge color="info" className="mb-1">
+                                                            +{testData.tags.length - 8} more
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <em className="text-muted">None selected</em>
+                                            )}
+                                        </div>
+                                    </Col>
+                                </Row>
+                            </CardBody>
+                        </Card>
+
+                        {/* Test Settings */}
+                        <Card className="border-0 shadow-sm mb-4">
+                            <CardBody>
+                                <CardTitle tag="h6" className="d-flex align-items-center mb-3">
+                                    <Settings size={20} className="me-2" />
+                                    Test Configuration
+                                </CardTitle>
+
+                                <Row>
+                                    <Col md={6}>
+                                        <Table borderless size="sm">
+                                            <tbody>
+                                                <tr>
+                                                    <td className="fw-bold">Time Limit:</td>
+                                                    <td>
+                                                        <Badge color="warning">
+                                                            <Clock size={12} className="me-1" />
+                                                            {testData.settings.timeLimit} minutes
+                                                        </Badge>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="fw-bold">Attempts Allowed:</td>
+                                                    <td>
+                                                        <Badge color="info">
+                                                            <Users size={12} className="me-1" />
+                                                            {testData.settings.attemptsAllowed}
+                                                        </Badge>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="fw-bold">Shuffle Questions:</td>
+                                                    <td>
+                                                        <Badge color={testData.settings.shuffleQuestions ? 'success' : 'secondary'}>
+                                                            {testData.settings.shuffleQuestions ? 'Yes' : 'No'}
+                                                        </Badge>
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </Table>
+                                    </Col>
+                                    <Col md={6}>
+                                        <Alert color="info" className="mb-0">
+                                            <BarChart3 size={16} className="me-2" />
+                                            <strong>Estimated Metrics</strong>
+                                            <ul className="mb-0 mt-2 small">
+                                                <li>Avg. time per question: {estimatedMetrics.avgTimePerQuestion} min</li>
+                                                <li>Estimated completion rate: {estimatedMetrics.estimatedCompletionRate}%</li>
+                                                <li>Difficulty score: {estimatedMetrics.difficultyScore}/5</li>
+                                            </ul>
+                                        </Alert>
+                                    </Col>
+                                </Row>
+                            </CardBody>
+                        </Card>
+
+                        {/* Questions/Sections Overview */}
+                        <Card className="border-0 shadow-sm mb-4">
+                            <CardBody>
+                                <CardTitle tag="h6" className="d-flex align-items-center mb-3">
+                                    <FileText size={20} className="me-2" />
+                                    {testData.settings.useSections ? 'Sections Overview' : 'Questions Overview'}
+                                </CardTitle>
+
+                                {testData.settings.useSections ? (
+                                    testData.sections.length > 0 ? (
+                                        <Table responsive>
+                                            <thead>
+                                                <tr>
+                                                    <th>Section</th>
+                                                    <th>Questions</th>
+                                                    <th>Points</th>
+                                                    <th>Time Limit</th>
+                                                    <th>Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {testData.sections.map((section, index) => (
+                                                    <tr key={index}>
+                                                        <td>
+                                                            <div className="d-flex align-items-center">
+                                                                <Badge color="primary" className="me-2">{index + 1}</Badge>
+                                                                {section.name}
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <Badge color="info">{section.questions.length}</Badge>
+                                                        </td>
+                                                        <td>
+                                                            <Badge color="success">
+                                                                {section.questions.reduce((sum, q) => sum + q.points, 0)}
+                                                            </Badge>
+                                                        </td>
+                                                        <td>
+                                                            <Badge color="warning">{section.timeLimit} min</Badge>
+                                                        </td>
+                                                        <td>
+                                                            {section.questions.length > 0 ? (
+                                                                <Badge color="success">
+                                                                    <CheckCircle size={12} className="me-1" />
+                                                                    Ready
+                                                                </Badge>
+                                                            ) : (
+                                                                <Badge color="danger">
+                                                                    <AlertTriangle size={12} className="me-1" />
+                                                                    Empty
+                                                                </Badge>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </Table>
+                                    ) : (
+                                        <Alert color="warning">
+                                            <AlertTriangle size={16} className="me-2" />
+                                            No sections defined. Please add at least one section.
+                                        </Alert>
+                                    )
+                                ) : (
+                                    <Alert color="info" className="mb-0">
+                                        <FileText size={16} className="me-2" />
+                                        This test contains <strong>{getTotalQuestions()}</strong> questions worth a total of{' '}
+                                        <strong>{getTotalPoints()}</strong> points.
+                                        <div className="mt-1 small">
+                                            Average points per question: <strong>{estimatedMetrics.avgPointsPerQuestion}</strong>
+                                        </div>
+                                    </Alert>
+                                )}
+                            </CardBody>
+                        </Card>
+                    </Col>
+
+                    {/* Enhanced Summary Sidebar */}
+                    <Col lg={4}>
+                        <Card className="border-0 shadow-sm sticky-top">
+                            <CardBody>
+                                <CardTitle tag="h6" className="d-flex align-items-center mb-3">
+                                    <TrendingUp size={20} className="me-2" />
+                                    Publication Summary
+                                </CardTitle>
+
+                                {/* Key Metrics */}
+                                <div className="mb-4">
+                                    <div className="row g-2 mb-3">
+                                        <div className="col-6">
+                                            <div className="text-center p-2 bg-primary bg-opacity-10 rounded">
+                                                <div className="h4 mb-0 text-primary">{getTotalQuestions()}</div>
+                                                <small className="text-muted">Questions</small>
+                                            </div>
+                                        </div>
+                                        <div className="col-6">
+                                            <div className="text-center p-2 bg-success bg-opacity-10 rounded">
+                                                <div className="h4 mb-0 text-success">{getTotalPoints()}</div>
+                                                <small className="text-muted">Points</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="row g-2">
+                                        <div className="col-6">
+                                            <div className="text-center p-2 bg-warning bg-opacity-10 rounded">
+                                                <div className="h5 mb-0 text-warning">{testData.settings.timeLimit}</div>
+                                                <small className="text-muted">Minutes</small>
+                                            </div>
+                                        </div>
+                                        <div className="col-6">
+                                            <div className="text-center p-2 bg-info bg-opacity-10 rounded">
+                                                <div className="h5 mb-0 text-info">{testData.languages.length}</div>
+                                                <small className="text-muted">Languages</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Configuration Summary */}
+                                <div className="mb-4">
+                                    <Label className="fw-bold mb-2">Configuration:</Label>
+                                    <div className="d-flex flex-wrap gap-1 mb-2">
+                                        <Badge color={testData.isGlobal ? "primary" : "secondary"}>
+                                            {testData.isGlobal ? "Global" : "Organization"}
+                                        </Badge>
+                                        <Badge color={testData.settings.useSections ? "info" : "success"}>
+                                            {testData.settings.useSections ? "Sectioned" : "Single"}
+                                        </Badge>
+                                        <Badge color={getStatusColor(testData.status)}>
+                                            {testData.status.toUpperCase()}
+                                        </Badge>
+                                    </div>
+                                    {testData.settings.shuffleQuestions && (
+                                        <div className="small text-muted">
+                                            <Shield size={12} className="me-1" />
+                                            Question shuffling enabled
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Validation Summary */}
+                                <div className="mb-4">
+                                    <Label className="fw-bold mb-2">Validation:</Label>
+                                    <div className="mb-2">
+                                        <div className="d-flex justify-content-between small mb-1">
+                                            <span>Issues:</span>
+                                            <Badge color="danger">
+                                                {validationDetails.filter(v => v.type === 'error').length}
+                                            </Badge>
+                                        </div>
+                                        <div className="d-flex justify-content-between small mb-1">
+                                            <span>Warnings:</span>
+                                            <Badge color="warning">
+                                                {validationDetails.filter(v => v.type === 'warning').length}
+                                            </Badge>
+                                        </div>
+                                        <div className="d-flex justify-content-between small">
+                                            <span>Suggestions:</span>
+                                            <Badge color="info">
+                                                {validationDetails.filter(v => v.type === 'suggestion').length}
+                                            </Badge>
+                                        </div>
+                                    </div>
+                                    <Progress
+                                        value={getValidationIssues().length === 0 ? 100 : 50}
+                                        color={getValidationIssues().length === 0 ? "success" : "danger"}
+                                        className="mb-2"
+                                        style={{ height: '6px' }}
+                                    />
+                                </div>
+
+                                {testData.settings.useSections && (
+                                    <div className="mb-4">
+                                        <Label className="fw-bold mb-2">Sections ({testData.sections.length}):</Label>
+                                        {testData.sections.length > 0 ? (
+                                            testData.sections.map((section, index) => (
+                                                <div key={index} className="d-flex justify-content-between align-items-center mb-1 p-2 bg-light rounded">
+                                                    <small className="text-truncate me-2" style={{ maxWidth: '120px' }}>
+                                                        {index + 1}. {section.name}
+                                                    </small>
+                                                    <div>
+                                                        <Badge color="info" className="me-1">
+                                                            {section.questions.length} Q
+                                                        </Badge>
+                                                        <Badge color="success">
+                                                            {section.questions.reduce((sum, q) => sum + q.points, 0)} pts
+                                                        </Badge>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <em className="text-muted">No sections defined</em>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Estimated Performance */}
+                                <div className="mb-4">
+                                    <Label className="fw-bold mb-2">Estimated Performance:</Label>
+                                    <Alert color="light" className="py-2 mb-2">
+                                        <div className="small">
+                                            <div className="d-flex justify-content-between mb-1">
+                                                <span>Completion Rate:</span>
+                                                <Badge color="info">{estimatedMetrics.estimatedCompletionRate}%</Badge>
+                                            </div>
+                                            <div className="d-flex justify-content-between mb-1">
+                                                <span>Pass Rate:</span>
+                                                <Badge color="success">{estimatedMetrics.estimatedPassRate}%</Badge>
+                                            </div>
+                                            <div className="d-flex justify-content-between">
+                                                <span>Difficulty:</span>
+                                                <Badge color={estimatedMetrics.difficultyScore > 3.5 ? "danger" : estimatedMetrics.difficultyScore > 2.5 ? "warning" : "success"}>
+                                                    {estimatedMetrics.difficultyScore}/5
+                                                </Badge>
+                                            </div>
+                                        </div>
+                                    </Alert>
+                                </div>
+
+                                {/* Publication Actions */}
+                                <div className="d-grid gap-2">
+                                    <Button
+                                        color="primary"
+                                        size="lg"
+                                        onClick={() => setPublishModal(true)}
+                                        disabled={getValidationIssues().length > 0}
+                                        className="d-flex align-items-center justify-content-center"
+                                    >
+                                        <Send size={16} className="me-2" />
+                                        {getValidationIssues().length > 0 ? 'Fix Issues to Publish' : 'Publish Test'}
+                                    </Button>
+
+                                    {getValidationIssues().length === 0 && (
+                                        <ButtonGroup>
+                                            <Button
+                                                color="outline-secondary"
+                                                size="sm"
+                                                onClick={() => {
+                                                    setPublishStatus('draft');
+                                                    setPublishModal(true);
+                                                }}
+                                            >
+                                                <Edit3 size={14} className="me-1" />
+                                                Save Draft
+                                            </Button>
+                                            <Button
+                                                color="outline-info"
+                                                size="sm"
+                                                onClick={handlePreview}
+                                            >
+                                                <Eye size={14} className="me-1" />
+                                                Preview
+                                            </Button>
+                                        </ButtonGroup>
+                                    )}
+
+                                    {getValidationIssues().length > 0 && (
+                                        <small className="text-muted text-center">
+                                            <AlertTriangle size={12} className="me-1" />
+                                            Fix {getValidationIssues().length} validation issue(s) to publish
+                                        </small>
+                                    )}
+                                </div>
+
+                                {/* Backend Alignment Notice */}
+                                <Alert color="light" className="mt-3 mb-0">
+                                    <Info size={14} className="me-2" />
+                                    <small>
+                                        <strong>Backend Ready:</strong> This test configuration fully leverages your backend model's capabilities including template types, language filtering, tag-based categorization, and flexible section/question structures.
+                                    </small>
+                                </Alert>
+                            </CardBody>
+                        </Card>
+                    </Col>
+                </Row>
+            ) : (
+                <Alert color="danger">
+                    <AlertTriangle size={16} className="me-2" />
+                    Unauthorized: Only admins or instructors can access this page.
+                </Alert>
+            )}
+
+            {/* Publish Modal */}
+            <Modal isOpen={publishModal} toggle={() => setPublishModal(false)} size="lg">
+                <ModalHeader toggle={() => setPublishModal(false)}>
+                    <div className="d-flex align-items-center">
+                        <Send size={20} className="me-2" />
+                        Publish Test
+                    </div>
+                </ModalHeader>
+                <ModalBody>
+                    <Row>
+                        <Col md={8}>
+                            <FormGroup>
+                                <Label for="publishStatus" className="fw-bold">
+                                    Publication Status
+                                </Label>
+                                <Input
+                                    type="select"
+                                    id="publishStatus"
+                                    value={publishStatus}
+                                    onChange={handleStatusChange as any}
+                                >
+                                    <option value="draft">Save as Draft</option>
+                                    <option value="active">Publish Active</option>
+                                </Input>
+                                <small className="text-muted">
+                                    {publishStatus === 'draft'
+                                        ? 'Save the test as a draft. Students cannot access draft tests.'
+                                        : 'Publish the test as active. Students will be able to take this test immediately.'}
+                                </small>
+                            </FormGroup>
+
+                            <Alert color={publishStatus === 'active' ? 'warning' : 'info'} className="mt-3">
+                                <div className="d-flex align-items-start">
+                                    {publishStatus === 'active' ? (
+                                        <AlertTriangle size={16} className="me-2 mt-1" />
+                                    ) : (
+                                        <Info size={16} className="me-2 mt-1" />
+                                    )}
+                                    <div>
+                                        <strong>
+                                            {publishStatus === 'active' ? 'Publishing Active Test' : 'Saving as Draft'}
+                                        </strong>
+                                        <div className="mt-1 small">
+                                            {publishStatus === 'active'
+                                                ? 'Once published as active, students will immediately be able to access and take this test. Make sure all settings are correct.'
+                                                : 'The test will be saved but not visible to students. You can edit and publish it later from the test management interface.'}
+                                        </div>
+                                    </div>
+                                </div>
+                            </Alert>
+                        </Col>
+                        <Col md={4}>
+                            <Card className="bg-light border-0">
+                                <CardBody>
+                                    <h6 className="mb-3">Final Summary</h6>
+                                    <div className="small">
+                                        <div className="d-flex justify-content-between mb-1">
+                                            <span>Questions:</span>
+                                            <strong>{getTotalQuestions()}</strong>
+                                        </div>
+                                        <div className="d-flex justify-content-between mb-1">
+                                            <span>Points:</span>
+                                            <strong>{getTotalPoints()}</strong>
+                                        </div>
+                                        <div className="d-flex justify-content-between mb-1">
+                                            <span>Time Limit:</span>
+                                            <strong>{testData.settings.timeLimit} min</strong>
+                                        </div>
+                                        <div className="d-flex justify-content-between mb-1">
+                                            <span>Attempts:</span>
+                                            <strong>{testData.settings.attemptsAllowed}</strong>
+                                        </div>
+                                        <div className="d-flex justify-content-between mb-1">
+                                            <span>Languages:</span>
+                                            <strong>{testData.languages.length}</strong>
+                                        </div>
+                                        <div className="d-flex justify-content-between mb-1">
+                                            <span>Topics:</span>
+                                            <strong>{testData.tags.length}</strong>
+                                        </div>
+                                        <hr className="my-2" />
+                                        <div className="d-flex justify-content-between">
+                                            <span>Visibility:</span>
+                                            <Badge color={testData.isGlobal ? "primary" : "secondary"}>
+                                                {testData.isGlobal ? "Global" : "Organization"}
+                                            </Badge>
+                                        </div>
+                                    </div>
+                                </CardBody>
+                            </Card>
+                        </Col>
+                    </Row>
+                </ModalBody>
+                <ModalFooter>
+                    <Button color="secondary" onClick={() => setPublishModal(false)}>
+                        Cancel
+                    </Button>
+                    <Button color="primary" onClick={handlePublish}>
+                        <Send size={16} className="me-2" />
+                        {publishStatus === 'draft' ? 'Save Draft' : 'Publish Test'}
+                    </Button>
+                </ModalFooter>
+            </Modal>
+
+            {/* Navigation */}
+            <div className="d-flex justify-content-between mt-4">
+                <Button color="secondary" onClick={onPrevious} className="d-flex align-items-center">
+                    <ArrowLeft size={16} className="me-1" />
+                    Previous: Questions
+                </Button>
+                <div className="text-end">
+                    <div className="text-muted small mb-1">Ready to launch your test?</div>
+                    <Badge color={getValidationIssues().length === 0 ? "success" : "danger"}>
+                        {getValidationIssues().length === 0 ? "All systems go!" : `${getValidationIssues().length} issues remaining`}
+                    </Badge>
+                </div>
+            </div>
         </div>
-      </div>
-    </div>
-  );
+    );
 };
 
 export default ReviewPublish;

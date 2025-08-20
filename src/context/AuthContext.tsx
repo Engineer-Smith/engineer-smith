@@ -1,181 +1,235 @@
-import { createContext, useState, useEffect, useCallback, useContext } from "react";
-import type { ReactNode } from "react";
-import axios from "../utils/axiosInstance";
-import type { User } from "../types";
+import React, { createContext, useState, useEffect, useCallback } from 'react';
+import type { ReactNode } from 'react';
+import apiService from '../services/ApiService';
+import type { ApiResponse, User } from '../types';
 
-interface AuthContextType {
+interface AuthState {
   user: User | null;
+  isAuthenticated: boolean;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (data: RegisterPayload) => Promise<void>;
+  error: string | null;
+}
+
+interface AuthContextType extends AuthState {
+  login: (loginCredential: string, password: string) => Promise<void>;
+  ssoLogin: () => void;
+  register: (
+    username: string,
+    email?: string,
+    password?: string,
+    inviteCode?: string,
+    role?: string
+  ) => Promise<void>;
+  validateInviteCode: (inviteCode: string) => Promise<{ valid: boolean; organizationName?: string }>;
   logout: () => Promise<void>;
-  refreshUser: () => Promise<void>;
-  client: typeof axios;
+  clearError: () => void;
 }
 
-interface RegisterPayload {
-  email: string;
-  password: string;
-  firstName: string;
-  lastName: string;
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  isAuthenticated: false,
+  loading: false,
+  error: null,
+  login: async () => {},
+  ssoLogin: () => {},
+  register: async () => {},
+  validateInviteCode: async () => ({ valid: false }),
+  logout: async () => {},
+  clearError: () => {},
+});
+
+interface AuthProviderProps {
+  children: ReactNode;
 }
 
-export const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+  const [state, setState] = useState<AuthState>({
+    user: null,
+    isAuthenticated: false,
+    loading: true,
+    error: null,
+  });
 
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const setError = (message: string) => {
+    setState((prev) => ({
+      ...prev,
+      loading: false,
+      error: message,
+    }));
+  };
 
-  const fetchCurrentUser = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await axios.get("/auth/me");
-      
-      // Handle standardized response format
-      if (response.data.success) {
-        // New standardized format: { success: true, data: { user: {...} } }
-        const userData = response.data.data?.user;
-        setUser(userData);
-      } else if (response.data.user) {
-        // Fallback for direct user object: { user: {...} }
-        setUser(response.data.user);
-      } else {
-        // Fallback for other formats
-        setUser(response.data);
+  const setAuthenticated = (user: User) => {
+    setState({
+      user,
+      isAuthenticated: true,
+      loading: false,
+      error: null,
+    });
+  };
+
+  const setUnauthenticated = () => {
+    setState({
+      user: null,
+      isAuthenticated: false,
+      loading: false,
+      error: null,
+    });
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    
+    const checkAuthStatus = async () => {
+      try {
+        console.log('AuthContext: Checking auth status...');
+        setState((prev) => ({ ...prev, loading: true }));
+        
+        const response: ApiResponse<{ success: boolean; user: User }> = await apiService.getCurrentUser();
+
+        if (!mounted) return;
+
+        if (!response.error && response.data?.success && response.data?.user) {
+          console.log('AuthContext: User authenticated:', response.data.user.loginId);
+          setAuthenticated(response.data.user);
+        } else {
+          console.log('AuthContext: No valid session');
+          setUnauthenticated();
+        }
+      } catch (error) {
+        if (!mounted) return;
+        
+        console.log('AuthContext: Auth check failed (expected if not logged in)');
+        setUnauthenticated();
       }
-    } catch (error: any) {
-      console.error('Fetch user error:', error);
-      setUser(null);
-      // Don't redirect here as the axios interceptor handles 401s
-    } finally {
-      setLoading(false);
+    };
+
+    checkAuthStatus();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const login = useCallback(async (loginCredential: string, password: string) => {
+    setState((prev) => ({ ...prev, loading: true, error: null }));
+
+    try {
+      const response: ApiResponse<{ success: boolean; user: User; csrfToken: string }> = await apiService.login({ 
+        loginCredential, 
+        password 
+      });
+
+      if (response.error || !response.data?.success || !response.data?.user) {
+        setError(response.message || 'Login failed');
+        return;
+      }
+
+      setAuthenticated(response.data.user);
+    } catch (error) {
+      console.error('Login error:', error);
+      setError('Login failed. Please try again.');
     }
   }, []);
 
-  useEffect(() => {
-    fetchCurrentUser();
-  }, [fetchCurrentUser]);
+  const ssoLogin = useCallback(() => {
+    const ssoUrl = apiService.getSSOLoginUrl();
+    window.location.href = ssoUrl;
+  }, []);
 
-  const login = async (email: string, password: string) => {
-    try {
-      const response = await axios.post("/auth/login", { email, password });
-      
-      // Handle standardized response format
-      let userData = null;
-      
-      if (response.data.success) {
-        // New standardized format: { success: true, data: { user: {...} } }
-        userData = response.data.data?.user;
-      } else if (response.data.user) {
-        // Fallback for direct user object: { user: {...} }
-        userData = response.data.user;
-      } else {
-        // Fallback for other formats
-        userData = response.data;
-      }
-      
-      if (userData) {
-        setUser(userData);
-      } else {
-        throw new Error('Invalid response format');
-      }
-    } catch (error: any) {
-      // Handle both old and new error formats
-      let errorMessage = 'Login failed';
-      
-      if (error.response?.data?.error) {
-        // New standardized error format
-        errorMessage = error.response.data.error;
-      } else if (error.response?.data?.message) {
-        // Alternative error format
-        errorMessage = error.response.data.message;
-      } else if (typeof error.response?.data === 'string') {
-        // String error format
-        errorMessage = error.response.data;
-      }
-      
-      throw new Error(errorMessage);
-    }
-  };
+  const register = useCallback(
+    async (
+      username: string,
+      email?: string,
+      password?: string,
+      inviteCode?: string,
+      role?: string
+    ) => {
+      setState((prev) => ({ ...prev, loading: true, error: null }));
 
-  const register = async (payload: RegisterPayload) => {
-    try {
-      const response = await axios.post("/auth/register", payload);
-      
-      // Handle standardized response format
-      let userData = null;
-      
-      if (response.data.success) {
-        // New standardized format: { success: true, data: { user: {...} } }
-        userData = response.data.data?.user;
-      } else if (response.data.user) {
-        // Fallback for direct user object: { user: {...} }
-        userData = response.data.user;
-      } else {
-        // Fallback for other formats
-        userData = response.data;
-      }
-      
-      if (userData) {
-        setUser(userData);
-      } else {
-        throw new Error('Invalid response format');
-      }
-    } catch (error: any) {
-      // Handle both old and new error formats
-      let errorMessage = 'Registration failed';
-      
-      if (error.response?.data?.error) {
-        // New standardized error format
-        errorMessage = error.response.data.error;
-      } else if (error.response?.data?.message) {
-        // Alternative error format
-        errorMessage = error.response.data.message;
-      } else if (typeof error.response?.data === 'string') {
-        // String error format
-        errorMessage = error.response.data;
-      }
-      
-      throw new Error(errorMessage);
-    }
-  };
+      try {
+        const response: ApiResponse<{ success: boolean; user: User; csrfToken: string }> = await apiService.register({
+          username,
+          email,
+          password,
+          inviteCode,
+          role,
+        });
 
-  const logout = async () => {
-    try {
-      await axios.post("/auth/logout");
-      setUser(null);
-    } catch (error) {
-      // Even if logout fails, clear local state
-      console.error('Logout error:', error);
-      setUser(null);
-    }
-  };
+        if (response.error || !response.data?.success || !response.data?.user) {
+          setError(response.message || 'Registration failed');
+          return;
+        }
 
-  const refreshUser = async () => {
-    await fetchCurrentUser();
-  };
-
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        loading,
-        login,
-        register,
-        logout,
-        refreshUser,
-        client: axios
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+        setAuthenticated(response.data.user);
+      } catch (error) {
+        console.error('Registration error:', error);
+        setError('Registration failed. Please try again.');
+      }
+    },
+    []
   );
+
+  const validateInviteCode = useCallback(async (inviteCode: string) => {
+    setState((prev) => ({ ...prev, loading: true, error: null }));
+
+    try {
+      const response: ApiResponse<{ success: boolean; organization: { id: string; name: string } }> =
+        await apiService.validateInviteCode({ inviteCode });
+
+      setState((prev) => ({ ...prev, loading: false }));
+
+      if (response.error || !response.data?.success || !response.data?.organization) {
+        setError(response.message || 'Invalid invite code');
+        return { valid: false };
+      }
+
+      return { 
+        valid: true, 
+        organizationName: response.data.organization.name 
+      };
+    } catch (error) {
+      console.error('Invite code validation error:', error);
+      setError('Failed to validate invite code');
+      return { valid: false };
+    }
+  }, []);
+
+  const logout = useCallback(async () => {
+    setState((prev) => ({ ...prev, loading: true, error: null }));
+
+    try {
+      await apiService.logout();
+      document.cookie = 'csrfToken=; Max-Age=0; path=/;';
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+
+    setUnauthenticated();
+  }, []);
+
+  const clearError = useCallback(() => {
+    setState((prev) => ({ ...prev, error: null }));
+  }, []);
+
+  const value: AuthContextType = {
+    ...state,
+    login,
+    ssoLogin,
+    register,
+    validateInviteCode,
+    logout,
+    clearError,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {
-  const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error("useAuth must be used within an AuthProvider");
+  const context = React.useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
   }
-  return ctx;
+  return context;
 };
+
+export default AuthContext;

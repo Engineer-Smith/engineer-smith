@@ -1,482 +1,662 @@
-// src/pages/TestManagementPage.tsx
-import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+// pages/TestManagementPage.tsx
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import apiService from '../services/ApiService';
 import {
   Container,
   Row,
   Col,
   Card,
   CardBody,
+  CardTitle,
+  CardText,
   Button,
-  Table,
   Badge,
-  Spinner,
   Alert,
+  Spinner,
   Input,
-  FormGroup,
-  Label,
-  Tooltip,
-} from "reactstrap";
-import { testAPI } from "../services/testAPI";
-import type { TestListItem } from "../types";
-
-type TestStatus = "draft" | "published" | "archived";
+  InputGroup,
+  InputGroupText,
+  ButtonGroup,
+  Modal,
+  ModalHeader,
+  ModalBody,
+  ModalFooter
+} from 'reactstrap';
+import {
+  Plus,
+  Search,
+  Filter,
+  Edit,
+  Trash2,
+  Eye,
+  Play,
+  Pause,
+  Archive,
+  Users,
+  Clock,
+  Target,
+  BarChart3,
+  CheckCircle,
+  AlertTriangle,
+  Globe,
+  Building,
+  FileText,
+  Settings
+} from 'lucide-react';
+import type { Test, TestStatus } from '../types';
 
 const TestManagementPage: React.FC = () => {
-  const [tests, setTests] = useState<TestListItem[]>([]);
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  
+  const [tests, setTests] = useState<Test[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tooltipOpen, setTooltipOpen] = useState<Record<string, boolean>>({});
-  const [filter, setFilter] = useState({
-    status: "",
-    skill: "",
-    search: "",
-    useSections: "", // New filter for section-based tests
-  });
-  const navigate = useNavigate();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [isGlobalFilter, setIsGlobalFilter] = useState<string>('all');
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  
+  // Delete modal state
+  const [deleteModal, setDeleteModal] = useState(false);
+  const [testToDelete, setTestToDelete] = useState<{ id: string; title: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // Handle success messages from navigation state
+  useEffect(() => {
+    if (location.state?.message) {
+      setSuccessMessage(location.state.message);
+      // Clear the message after 5 seconds
+      const timer = setTimeout(() => setSuccessMessage(null), 5000);
+      
+      // Clear the location state to prevent message from showing again on refresh
+      window.history.replaceState({}, document.title);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [location.state]);
 
   useEffect(() => {
     fetchTests();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter]);
+  }, [statusFilter, typeFilter, isGlobalFilter]);
 
   const fetchTests = async () => {
+    if (!user) return;
+
     try {
       setLoading(true);
-      const params = new URLSearchParams();
-      if (filter.status) params.append("status", filter.status);
-      if (filter.skill) params.append("skill", filter.skill);
-      if (filter.search) params.append("search", filter.search);
-      if (filter.useSections) params.append("useSections", filter.useSections);
+      setError(null);
 
-      const response = await testAPI.getAllTests(params.toString());
-      setTests(response.tests);
-    } catch (err: any) {
-      setError(err.message || "Failed to fetch tests");
+      const params: any = {
+        limit: 50, // Get more tests for management page
+        skip: 0
+      };
+
+      // Add filters
+      if (statusFilter !== 'all') {
+        params.status = statusFilter;
+      }
+      if (isGlobalFilter !== 'all') {
+        params.isGlobal = isGlobalFilter === 'true';
+      }
+
+      console.log('TestManagementPage: Fetching tests with params:', params);
+
+      const response = await apiService.getAllTests(params);
+
+      if (response.error || !Array.isArray(response.data)) {
+        throw new Error(response.message || 'Failed to fetch tests');
+      }
+
+      setTests(response.data);
+    } catch (error: any) {
+      console.error('Error fetching tests:', error);
+      setError(error.message || 'Failed to fetch tests');
     } finally {
       setLoading(false);
     }
   };
 
+  // Filter tests based on search term and filters
+  const filteredTests = tests.filter(test => {
+    const matchesSearch = test.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         test.description.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    return matchesSearch;
+  });
+
+  const handleCreateTest = () => {
+    navigate('/admin/tests/new');
+  };
+
+  const handleViewTest = (testId: string) => {
+    navigate(`/admin/tests/view/${testId}`);
+  };
+
+  const handleEditTest = (testId: string) => {
+    navigate(`/admin/tests/edit/${testId}`);
+  };
+
+  const handleDeleteTest = (testId: string, testTitle: string) => {
+    setTestToDelete({ id: testId, title: testTitle });
+    setDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!testToDelete) return;
+    
+    try {
+      setDeleting(true);
+      const response = await apiService.deleteTest(testToDelete.id);
+      if (response.error) {
+        throw new Error(response.message || 'Failed to delete test');
+      }
+      
+      // Close modal and reset state
+      setDeleteModal(false);
+      setTestToDelete(null);
+      
+      // Refresh the list
+      fetchTests();
+    } catch (error: any) {
+      alert('Error deleting test: ' + error.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const cancelDelete = () => {
+    setDeleteModal(false);
+    setTestToDelete(null);
+  };
+
   const handleStatusChange = async (testId: string, newStatus: TestStatus) => {
     try {
-      if (newStatus === "published") {
-        await testAPI.publishTest(testId);
-      } else {
-        await testAPI.updateTest(testId, { status: newStatus });
+      const response = await apiService.updateTest(testId, { status: newStatus });
+      if (response.error) {
+        throw new Error(response.message || 'Failed to update test status');
       }
+      
+      // Refresh the list
       fetchTests();
-    } catch (err: any) {
-      setError(err.message || "Failed to update test status");
+    } catch (error: any) {
+      alert('Error updating test status: ' + error.message);
     }
   };
 
-  const handleDeleteTest = async (testId: string) => {
-    if (!window.confirm("Are you sure you want to delete this test?")) return;
-
-    try {
-      await testAPI.deleteTest(testId);
-      fetchTests();
-    } catch (err: any) {
-      setError(err.message || "Failed to delete test");
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active': return 'success';
+      case 'draft': return 'warning';
+      case 'archived': return 'secondary';
+      default: return 'light';
     }
   };
 
-  const handleDuplicateTest = async (testId: string) => {
-    try {
-      await testAPI.duplicateTest(testId);
-      fetchTests();
-    } catch (err: any) {
-      setError(err.message || "Failed to duplicate test");
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'active': return <Play className="icon-xs" />;
+      case 'draft': return <Edit className="icon-xs" />;
+      case 'archived': return <Archive className="icon-xs" />;
+      default: return <FileText className="icon-xs" />;
     }
   };
 
-  const toggleTooltip = (testId: string) => {
-    setTooltipOpen(prev => ({
-      ...prev,
-      [testId]: !prev[testId]
-    }));
-  };
-
-  const getStatusBadge = (status: TestStatus) => {
-    const colors: Record<TestStatus, string> = {
-      draft: "secondary",
-      published: "success",
-      archived: "warning",
-    };
-    return <Badge color={colors[status]}>{status}</Badge>;
-  };
-
-  const getTestTypeDisplay = (testType: string) => {
-    const types: Record<string, string> = {
-      single_skill: "Single Skill",
-      frontend: "Frontend",
-      react_focused: "React Focused",
-      full_stack: "Full Stack",
-      mobile: "Mobile",
-      comprehensive: "Comprehensive",
-      custom: "Custom",
-    };
-    return types[testType] || testType;
-  };
-
-  // Enhanced function to get question count (handles sections)
-  const getQuestionCount = (test: any) => {
-    if (test.settings?.useSections && test.sections) {
-      return test.sections.reduce((total: number, section: any) => {
-        if (section.questionPool?.enabled) {
-          return total + (section.questionPool.totalQuestions || 0);
-        }
-        return total + (section.questions?.length || 0);
-      }, 0);
-    }
-    return test.questions?.length ?? 0;
-  };
-
-  // Enhanced function to get total time (handles sections)
-  const getTotalTime = (test: any) => {
-    if (test.settings?.useSections && test.sections) {
-      return test.sections.reduce((total: number, section: any) => {
-        return total + (section.timeLimit || 0);
-      }, 0);
-    }
-    return test.settings?.timeLimit || 0;
-  };
-
-  // Get section count for display
-  const getSectionCount = (test: any) => {
-    return test.settings?.useSections ? (test.sections?.length || 0) : 0;
-  };
-
-  if (loading) {
+  if (!user) {
     return (
-      <Container className="py-4 text-center">
-        <Spinner color="primary" />
-        <p className="mt-2">Loading tests...</p>
+      <Container className="py-4">
+        <Row className="justify-content-center">
+          <Col md={6} className="text-center">
+            <Spinner color="primary" className="mb-3" />
+            <p className="text-muted">Loading...</p>
+          </Col>
+        </Row>
       </Container>
     );
   }
 
   return (
-    <Container className="py-4">
-      <Row className="mb-4">
-        <Col>
-          <h1 className="h2 mb-3 font-weight-bold">Test Management</h1>
-          <p className="text-muted">Create, edit, and manage tests for your platform.</p>
-        </Col>
-        <Col xs="auto">
-          <Button color="primary" onClick={() => navigate("/admin/tests/create")}>
-            Create New Test
-          </Button>
-        </Col>
-      </Row>
+    <div style={{ backgroundColor: '#f8f9fa', minHeight: '100vh', paddingTop: '20px' }}>
+      {/* Header */}
+      <div className="bg-white shadow-sm border-bottom">
+        <Container>
+          <div className="py-3">
+            <Row className="align-items-center">
+              <Col>
+                <div className="d-flex align-items-center">
+                  <FileText className="me-3 text-primary icon-lg" />
+                  <div>
+                    <h1 className="h4 mb-0">Test Management</h1>
+                    <p className="text-muted mb-0 small">
+                      {user?.organization?.isSuperOrg 
+                        ? "Manage global and organization-specific tests"
+                        : `Manage tests for ${user?.organization?.name}`
+                      }
+                    </p>
+                  </div>
+                </div>
+              </Col>
+              <Col xs="auto">
+                <div className="d-flex gap-2">
+                  {user?.organization?.isSuperOrg && (
+                    <Badge color="primary" className="d-flex align-items-center">
+                      <Globe className="me-1 icon-xs" />
+                      Super Admin Access
+                    </Badge>
+                  )}
+                  <Button 
+                    color="success" 
+                    onClick={handleCreateTest}
+                    className="d-flex align-items-center"
+                  >
+                    <Plus className="me-2 icon-sm" />
+                    Create Test
+                  </Button>
+                </div>
+              </Col>
+            </Row>
+          </div>
+        </Container>
+      </div>
 
-      {error && (
-        <Alert color="danger" toggle={() => setError(null)}>
-          {error}
-        </Alert>
-      )}
+      <Container className="py-4">
+        {/* Success Message */}
+        {successMessage && (
+          <Alert 
+            color="success" 
+            className="mb-4 d-flex align-items-center"
+            dismissible
+            onDismiss={() => setSuccessMessage(null)}
+          >
+            <CheckCircle className="me-2 icon-sm" />
+            {successMessage}
+          </Alert>
+        )}
 
-      {/* Enhanced Filters */}
-      <Card className="mb-4">
-        <CardBody>
-          <Row>
-            <Col md="3">
-              <FormGroup>
-                <Label>Filter by Status</Label>
+        {/* Stats Cards */}
+        <Row className="mb-4">
+          <Col md={3}>
+            <Card className="border-0 shadow-sm bg-primary bg-opacity-10">
+              <CardBody>
+                <div className="d-flex align-items-center">
+                  <FileText className="text-primary me-3 icon-lg" />
+                  <div>
+                    <h3 className="mb-0 fw-bold">{tests.length}</h3>
+                    <p className="text-muted mb-0 small">Total Tests</p>
+                  </div>
+                </div>
+              </CardBody>
+            </Card>
+          </Col>
+          <Col md={3}>
+            <Card className="border-0 shadow-sm bg-success bg-opacity-10">
+              <CardBody>
+                <div className="d-flex align-items-center">
+                  <Play className="text-success me-3 icon-lg" />
+                  <div>
+                    <h3 className="mb-0 fw-bold">
+                      {tests.filter(t => t.status === 'active').length}
+                    </h3>
+                    <p className="text-muted mb-0 small">Active Tests</p>
+                  </div>
+                </div>
+              </CardBody>
+            </Card>
+          </Col>
+          <Col md={3}>
+            <Card className="border-0 shadow-sm bg-warning bg-opacity-10">
+              <CardBody>
+                <div className="d-flex align-items-center">
+                  <Edit className="text-warning me-3 icon-lg" />
+                  <div>
+                    <h3 className="mb-0 fw-bold">
+                      {tests.filter(t => t.status === 'draft').length}
+                    </h3>
+                    <p className="text-muted mb-0 small">Draft Tests</p>
+                  </div>
+                </div>
+              </CardBody>
+            </Card>
+          </Col>
+          <Col md={3}>
+            <Card className="border-0 shadow-sm bg-info bg-opacity-10">
+              <CardBody>
+                <div className="d-flex align-items-center">
+                  <Users className="text-info me-3 icon-lg" />
+                  <div>
+                    <h3 className="mb-0 fw-bold">
+                      {tests.reduce((sum, test) => sum + (test.stats?.totalAttempts || 0), 0)}
+                    </h3>
+                    <p className="text-muted mb-0 small">Total Attempts</p>
+                  </div>
+                </div>
+              </CardBody>
+            </Card>
+          </Col>
+        </Row>
+
+        {/* Filters */}
+        <Card className="border-0 shadow-sm mb-4">
+          <CardBody>
+            <Row className="g-3">
+              <Col md={4}>
+                <InputGroup>
+                  <InputGroupText>
+                    <Search className="icon-sm" />
+                  </InputGroupText>
+                  <Input
+                    type="text"
+                    placeholder="Search tests..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </InputGroup>
+              </Col>
+              
+              <Col md={2}>
                 <Input
                   type="select"
-                  value={filter.status}
-                  onChange={(e) => setFilter({ ...filter, status: e.target.value })}
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
                 >
-                  <option value="">All Statuses</option>
+                  <option value="all">All Status</option>
+                  <option value="active">Active</option>
                   <option value="draft">Draft</option>
-                  <option value="published">Published</option>
                   <option value="archived">Archived</option>
                 </Input>
-              </FormGroup>
-            </Col>
-            <Col md="3">
-              <FormGroup>
-                <Label>Filter by Skill</Label>
-                <Input
-                  type="text"
-                  placeholder="Enter skill name..."
-                  value={filter.skill}
-                  onChange={(e) => setFilter({ ...filter, skill: e.target.value })}
-                />
-              </FormGroup>
-            </Col>
-            <Col md="3">
-              <FormGroup>
-                <Label>Test Structure</Label>
-                <Input
-                  type="select"
-                  value={filter.useSections}
-                  onChange={(e) => setFilter({ ...filter, useSections: e.target.value })}
-                >
-                  <option value="">All Tests</option>
-                  <option value="true">Section-Based</option>
-                  <option value="false">Single Section</option>
-                </Input>
-              </FormGroup>
-            </Col>
-            <Col md="3">
-              <FormGroup>
-                <Label>Search Tests</Label>
-                <Input
-                  type="text"
-                  placeholder="Search by title..."
-                  value={filter.search}
-                  onChange={(e) => setFilter({ ...filter, search: e.target.value })}
-                />
-              </FormGroup>
-            </Col>
-          </Row>
-          <Button
-            color="outline-secondary"
-            onClick={() => setFilter({ status: "", skill: "", search: "", useSections: "" })}
-          >
-            Clear Filters
-          </Button>
-        </CardBody>
-      </Card>
+              </Col>
 
-      {/* Enhanced Tests Table */}
-      <Card>
-        <CardBody>
-          {tests.length === 0 ? (
-            <div className="text-center py-4">
-              <p>
-                No tests found.{" "}
-                <Button color="link" onClick={() => navigate("/admin/tests/create")}>
-                  Create your first test
-                </Button>
-              </p>
+              {user?.organization?.isSuperOrg && (
+                <Col md={2}>
+                  <Input
+                    type="select"
+                    value={isGlobalFilter}
+                    onChange={(e) => setIsGlobalFilter(e.target.value)}
+                  >
+                    <option value="all">All Scope</option>
+                    <option value="true">Global</option>
+                    <option value="false">Organization</option>
+                  </Input>
+                </Col>
+              )}
+              
+              <Col md={user?.organization?.isSuperOrg ? 4 : 6}>
+                <div className="text-muted small d-flex align-items-center">
+                  <Filter className="me-2 icon-sm" />
+                  {filteredTests.length} tests found
+                </div>
+              </Col>
+            </Row>
+          </CardBody>
+        </Card>
+
+        {/* Error State */}
+        {error && (
+          <Alert color="danger" className="mb-4">
+            <strong>Error:</strong> {error}
+            <div className="mt-2">
+              <Button color="primary" size="sm" onClick={fetchTests}>
+                Retry
+              </Button>
             </div>
-          ) : (
-            <Table responsive>
-              <thead>
-                <tr>
-                  <th>Title</th>
-                  <th>Type</th>
-                  <th>Skills</th>
-                  <th>Structure</th>
-                  <th>Questions</th>
-                  <th>Time</th>
-                  <th>Status</th>
-                  <th>Stats</th>
-                  <th>Created</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tests.map((test) => {
-                  const questionCount = getQuestionCount(test);
-                  const totalTime = getTotalTime(test);
-                  const sectionCount = getSectionCount(test);
-                  const useSections = test.settings?.useSections;
+          </Alert>
+        )}
 
-                  return (
-                    <tr key={test._id}>
-                      <td>
-                        <div>
-                          <strong>{test.title}</strong>
-                          {test.description && (
-                            <div className="text-muted small">
-                              {test.description.substring(0, 60)}...
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td>{getTestTypeDisplay(test.testType)}</td>
-                      <td>
-                        {test.skills.map((skill, index) => (
-                          <Badge key={index} color="info" className="me-1 mb-1">
-                            {skill}
+        {/* Loading State */}
+        {loading && (
+          <Card className="border-0 shadow-sm text-center py-5">
+            <CardBody>
+              <Spinner color="primary" className="mb-3" />
+              <p className="text-muted">Loading tests...</p>
+            </CardBody>
+          </Card>
+        )}
+
+        {/* Tests Grid */}
+        {!loading && (
+          <Row className="g-3">
+            {filteredTests.map((test) => (
+              <Col key={test.id} lg={6} xl={4}>
+                <Card className="h-100 border-0 shadow-sm">
+                  <CardBody className="d-flex flex-column">
+                    {/* Header */}
+                    <div className="d-flex justify-content-between align-items-start mb-3">
+                      <div className="d-flex align-items-center">
+                        <Badge color={getStatusColor(test.status)} className="me-2">
+                          {getStatusIcon(test.status)}
+                          <span className="ms-1">{test.status}</span>
+                        </Badge>
+                        {test.isGlobal && (
+                          <Badge color="primary" size="sm">
+                            <Globe className="me-1 icon-xs" />
+                            Global
                           </Badge>
-                        ))}
-                      </td>
-                      <td>
-                        {useSections ? (
-                          <div>
-                            <Badge color="success" className="me-1">
-                              📚 {sectionCount} sections
-                            </Badge>
-                            <div className="small text-muted">
-                              Timed sections
-                            </div>
-                          </div>
-                        ) : (
-                          <div>
-                            <Badge color="secondary">
-                              📝 Single section
-                            </Badge>
-                            <div className="small text-muted">
-                              Traditional test
-                            </div>
-                          </div>
                         )}
-                      </td>
-                      <td>
-                        <span className="badge bg-light text-dark" id={`questions-${test._id}`}>
-                          {questionCount} questions
-                        </span>
-                        {useSections && (
-                          <Tooltip
-                            placement="top"
-                            isOpen={tooltipOpen[test._id]}
-                            target={`questions-${test._id}`}
-                            toggle={() => toggleTooltip(test._id)}
-                          >
-                            Questions distributed across {sectionCount} sections
-                          </Tooltip>
-                        )}
-                      </td>
-                      <td>
-                        <div className="small">
-                          <div><strong>{totalTime} min</strong></div>
-                          {useSections && (
-                            <div className="text-muted">
-                              ({Math.round(totalTime / sectionCount)} min/section avg)
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td>{getStatusBadge(test.status)}</td>
-                      <td>
-                        <small>
-                          <div>Attempts: {test.stats?.totalAttempts ?? 0}</div>
-                          <div>
-                            Avg Score: {test.stats?.averageScore?.toFixed(1) ?? 0}%
-                          </div>
-                          <div>
-                            Pass Rate: {test.stats?.passRate?.toFixed(1) ?? 0}%
-                          </div>
-                        </small>
-                      </td>
-                      <td>
-                        <small>
-                          {new Date(test.createdAt).toLocaleDateString()}
-                          <br />
-                          <span className="text-muted">
-                            {test.createdBy?.profile?.firstName}{" "}
-                            {test.createdBy?.profile?.lastName}
-                          </span>
-                        </small>
-                      </td>
-                      <td>
-                        <div className="btn-group-vertical btn-group-sm">
-                          <Button
-                            size="sm"
-                            color="outline-primary"
-                            onClick={() => navigate(`/admin/tests/${test._id}`)}
-                          >
-                            View
-                          </Button>
-                          <Button
-                            size="sm"
-                            color="outline-secondary"
-                            onClick={() => navigate(`/admin/tests/${test._id}/edit`)}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            size="sm"
-                            color="outline-info"
-                            onClick={() => handleDuplicateTest(test._id)}
-                          >
-                            Duplicate
-                          </Button>
-                          {test.status === "draft" && (
-                            <Button
-                              size="sm"
-                              color="outline-success"
-                              onClick={() => handleStatusChange(test._id, "published")}
-                            >
-                              Publish
-                            </Button>
-                          )}
-                          {test.status === "published" && (
-                            <Button
-                              size="sm"
-                              color="outline-warning"
-                              onClick={() => handleStatusChange(test._id, "archived")}
-                            >
-                              Archive
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            color="outline-danger"
-                            onClick={() => handleDeleteTest(test._id)}
-                            disabled={(test.stats?.totalAttempts ?? 0) > 0}
-                          >
-                            Delete
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </Table>
-          )}
-        </CardBody>
-      </Card>
+                      </div>
+                      <ButtonGroup size="sm">
+                        <Button
+                          color="outline-primary"
+                          onClick={() => handleViewTest(test.id)}
+                          title="View Test"
+                        >
+                          <Eye className="icon-xs" />
+                        </Button>
+                        <Button
+                          color="outline-secondary"
+                          onClick={() => handleEditTest(test.id)}
+                          title="Edit Test"
+                        >
+                          <Edit className="icon-xs" />
+                        </Button>
+                        <Button
+                          color="outline-danger"
+                          onClick={() => handleDeleteTest(test.id, test.title)}
+                          title="Delete Test"
+                        >
+                          <Trash2 className="icon-xs" />
+                        </Button>
+                      </ButtonGroup>
+                    </div>
 
-      {/* Enhanced Quick Stats */}
-      <Row className="mt-4">
-        <Col md="2">
-          <Card>
-            <CardBody className="text-center">
-              <h4>{tests.length}</h4>
-              <small className="text-muted">Total Tests</small>
+                    {/* Content */}
+                    <div className="flex-grow-1">
+                      <CardTitle tag="h6" className="mb-2">
+                        {test.title}
+                      </CardTitle>
+                      
+                      <CardText className="text-muted small mb-3">
+                        {test.description.length > 100 
+                          ? test.description.substring(0, 100) + '...'
+                          : test.description
+                        }
+                      </CardText>
+
+                      {/* Test Details */}
+                      <div className="mb-3">
+                        <div className="d-flex justify-content-between align-items-center mb-1">
+                          <small className="text-muted d-flex align-items-center">
+                            <Clock className="me-1 icon-xs" />
+                            Duration
+                          </small>
+                          <small className="fw-medium">{test.settings?.timeLimit || 0} min</small>
+                        </div>
+                        <div className="d-flex justify-content-between align-items-center mb-1">
+                          <small className="text-muted d-flex align-items-center">
+                            <Target className="me-1 icon-xs" />
+                            Questions
+                          </small>
+                          <small className="fw-medium">
+                            {test.settings?.useSections 
+                              ? test.sections?.reduce((sum, section) => sum + (section.questions?.length || 0), 0) || 0
+                              : test.questions?.length || 0
+                            }
+                          </small>
+                        </div>
+                        <div className="d-flex justify-content-between align-items-center">
+                          <small className="text-muted d-flex align-items-center">
+                            <Users className="me-1 icon-xs" />
+                            Attempts
+                          </small>
+                          <small className="fw-medium">{test.stats?.totalAttempts || 0}</small>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Footer Actions */}
+                    <div className="mt-auto">
+                      <div className="d-flex justify-content-between align-items-center">
+                        <small className="text-muted">
+                          Created {new Date(test.createdAt).toLocaleDateString()}
+                        </small>
+                        
+                        {test.status === 'draft' && (
+                          <Button
+                            color="success"
+                            size="sm"
+                            onClick={() => handleStatusChange(test.id, 'active' as TestStatus)}
+                            className="d-flex align-items-center"
+                          >
+                            <Play className="me-1 icon-xs" />
+                            Publish
+                          </Button>
+                        )}
+                        
+                        {test.status === 'active' && (
+                          <Button
+                            color="warning"
+                            size="sm"
+                            onClick={() => handleStatusChange(test.id, 'archived' as TestStatus)}
+                            className="d-flex align-items-center"
+                          >
+                            <Archive className="me-1 icon-xs" />
+                            Archive
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </CardBody>
+                </Card>
+              </Col>
+            ))}
+          </Row>
+        )}
+
+        {/* Empty State */}
+        {!loading && filteredTests.length === 0 && (
+          <Card className="border-0 shadow-sm text-center py-5">
+            <CardBody>
+              <FileText className="text-muted mb-3" size={48} />
+              <h5>No tests found</h5>
+              <p className="text-muted mb-4">
+                {searchTerm || statusFilter !== 'all' || isGlobalFilter !== 'all'
+                  ? 'Try adjusting your filters or search terms.'
+                  : 'Start building your test library by creating your first test.'
+                }
+              </p>
+              <Button color="success" onClick={handleCreateTest}>
+                <Plus className="me-2 icon-sm" />
+                Create Your First Test
+              </Button>
             </CardBody>
           </Card>
-        </Col>
-        <Col md="2">
-          <Card>
-            <CardBody className="text-center">
-              <h4>{tests.filter((t) => t.status === "published").length}</h4>
-              <small className="text-muted">Published</small>
-            </CardBody>
-          </Card>
-        </Col>
-        <Col md="2">
-          <Card>
-            <CardBody className="text-center">
-              <h4>{tests.filter((t) => t.status === "draft").length}</h4>
-              <small className="text-muted">Drafts</small>
-            </CardBody>
-          </Card>
-        </Col>
-        <Col md="2">
-          <Card>
-            <CardBody className="text-center">
-              <h4>{tests.filter((t) => t.settings?.useSections).length}</h4>
-              <small className="text-muted">Section-Based</small>
-            </CardBody>
-          </Card>
-        </Col>
-        <Col md="2">
-          <Card>
-            <CardBody className="text-center">
-              <h4>{tests.reduce((sum, t) => sum + getQuestionCount(t), 0)}</h4>
-              <small className="text-muted">Total Questions</small>
-            </CardBody>
-          </Card>
-        </Col>
-        <Col md="2">
-          <Card>
-            <CardBody className="text-center">
-              <h4>{tests.reduce((sum, t) => sum + (t.stats?.totalAttempts ?? 0), 0)}</h4>
-              <small className="text-muted">Total Attempts</small>
-            </CardBody>
-          </Card>
-        </Col>
-      </Row>
-    </Container>
+        )}
+
+        {/* Quick Actions */}
+        <Card className="border-0 shadow-sm mt-4">
+          <CardBody>
+            <h5 className="mb-3">Quick Actions</h5>
+            <div className="d-flex flex-wrap gap-2">
+              <Button 
+                color="success"
+                size="sm"
+                onClick={handleCreateTest}
+                className="d-flex align-items-center"
+              >
+                <Plus className="me-2 icon-sm" />
+                Create Test
+              </Button>
+              <Button 
+                color="primary"
+                size="sm"
+                onClick={() => navigate('/admin/test-sessions')}
+                className="d-flex align-items-center"
+              >
+                <Users className="me-2 icon-sm" />
+                View Sessions
+              </Button>
+              <Button 
+                color="info"
+                size="sm"
+                onClick={() => navigate('/admin/analytics')}
+                className="d-flex align-items-center"
+              >
+                <BarChart3 className="me-2 icon-sm" />
+                View Analytics
+              </Button>
+            </div>
+          </CardBody>
+        </Card>
+      </Container>
+
+      {/* Delete Confirmation Modal */}
+      <Modal isOpen={deleteModal} toggle={cancelDelete} centered>
+        <ModalHeader toggle={cancelDelete} className="border-0 pb-0">
+          <div className="d-flex align-items-center">
+            <div className="p-2 rounded bg-danger bg-opacity-10 me-3">
+              <AlertTriangle className="text-danger icon-md" />
+            </div>
+            <div>
+              <h5 className="mb-0">Delete Test</h5>
+            </div>
+          </div>
+        </ModalHeader>
+        <ModalBody className="pt-2">
+          <p className="mb-3">
+            Are you sure you want to delete the test:
+          </p>
+          <div className="p-3 bg-light rounded mb-3">
+            <strong>"{testToDelete?.title}"</strong>
+          </div>
+          <div className="d-flex align-items-start">
+            <AlertTriangle className="text-warning me-2 mt-1 icon-sm flex-shrink-0" />
+            <small className="text-muted">
+              This action cannot be undone. The test and all associated sessions and results will be permanently removed.
+            </small>
+          </div>
+        </ModalBody>
+        <ModalFooter className="border-0 pt-0">
+          <Button 
+            color="secondary" 
+            onClick={cancelDelete}
+            disabled={deleting}
+          >
+            Cancel
+          </Button>
+          <Button 
+            color="danger" 
+            onClick={confirmDelete}
+            disabled={deleting}
+            className="d-flex align-items-center"
+          >
+            {deleting ? (
+              <>
+                <Spinner size="sm" className="me-2" />
+                Deleting...
+              </>
+            ) : (
+              <>
+                <Trash2 className="me-2 icon-sm" />
+                Delete Test
+              </>
+            )}
+          </Button>
+        </ModalFooter>
+      </Modal>
+    </div>
   );
 };
 

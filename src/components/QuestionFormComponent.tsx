@@ -1,1153 +1,1043 @@
-// src/components/QuestionFormComponent.tsx
-import React, { useState } from "react";
+import React, { useState, useCallback } from 'react';
 import {
-  Card,
-  CardBody,
-  CardTitle,
-  Form,
-  FormGroup,
-  Label,
-  Input,
-  Button,
-  Alert,
-  Collapse,
-  Row,
-  Col,
-  Progress,
-  Badge,
-} from "reactstrap";
-import type { Question, Language } from "../types";
+    Card,
+    CardBody,
+    CardTitle,
+    Form,
+    FormGroup,
+    Label,
+    Input,
+    Button,
+    Alert,
+    Nav,
+    NavItem,
+    NavLink,
+    TabContent,
+    TabPane,
+    Row,
+    Col,
+    Container,
+    Badge,
+    Progress,
+} from 'reactstrap';
+import { useNavigate } from 'react-router-dom';
+import {
+    BookOpen,
+    Save,
+    X,
+    Plus,
+    Trash2,
+    Code,
+    CheckCircle,
+    AlertCircle,
+    Globe,
+    ChevronLeft,
+    ChevronRight,
+} from 'lucide-react';
+import Editor from '@monaco-editor/react';
+import { useAuth } from '../context/AuthContext';
+import apiService from '../services/ApiService';
+import type { Question, Language, Difficulty, Tags } from '../types';
 
 interface QuestionFormComponentProps {
-  question: Question;
-  onQuestionChange: (updatedQuestion: Question) => void;
-  onSubmit?: (question: Question) => void | Promise<void>;
-  submitLabel?: string;
-  showSubmitButton?: boolean;
-  showComplexityIndicator?: boolean;
-  availableSkills?: Question["skill"][];
-  compact?: boolean;
-  validationErrors?: string[];
-  onCancel?: () => void;
+    question?: Partial<Question>;
+    onSubmitSuccess?: (question: Question) => void;
+    submitLabel?: string;
+    showSubmitButton?: boolean;
+    compact?: boolean;
+    onCancel?: () => void;
 }
 
-// Programming languages for content.language
 const PROGRAMMING_LANGUAGES: Array<{ value: Language; label: string }> = [
-  { value: "javascript", label: "JavaScript" },
-  { value: "html", label: "HTML" },
-  { value: "css", label: "CSS" },
-  { value: "jsx", label: "React/JSX" },
-  { value: "dart", label: "Dart (Flutter)" },
-  { value: "typescript", label: "TypeScript" },
-  { value: "json", label: "JSON" },
-  { value: "sql", label: "SQL" },
+    { value: 'javascript', label: 'JavaScript' },
+    { value: 'html', label: 'HTML' },
+    { value: 'css', label: 'CSS' },
+    { value: 'react', label: 'React/JSX' },
+    { value: 'dart', label: 'Dart (Flutter)' },
+    { value: 'typescript', label: 'TypeScript' },
+    { value: 'json', label: 'JSON' },
+    { value: 'sql', label: 'SQL' },
+    { value: 'python', label: 'Python' },
+    { value: 'express', label: 'Express' },
+    { value: 'flutter', label: 'Flutter' },
+    { value: 'reactNative', label: 'React Native' },
 ];
 
-const DEFAULT_SKILLS: Question["skill"][] = [
-  "javascript",
-  "react",
-  "html",
-  "css",
-  "python",
-  "flutter",
-  "react-native",
-  "backend",
+const TAGS_OPTIONS: Array<{ value: Tags; label: string; group: string }> = [
+    { value: 'html', label: 'HTML', group: 'Web Technologies' },
+    { value: 'css', label: 'CSS', group: 'Web Technologies' },
+    { value: 'javascript', label: 'JavaScript', group: 'Web Technologies' },
+    { value: 'dom', label: 'DOM', group: 'Web Technologies' },
+    { value: 'events', label: 'Events', group: 'Web Technologies' },
+    { value: 'async-programming', label: 'Async Programming', group: 'Web Technologies' },
+    { value: 'promises', label: 'Promises', group: 'Web Technologies' },
+    { value: 'async-await', label: 'Async/Await', group: 'Web Technologies' },
+    { value: 'es6', label: 'ES6', group: 'Web Technologies' },
+    { value: 'closures', label: 'Closures', group: 'Web Technologies' },
+    { value: 'scope', label: 'Scope', group: 'Web Technologies' },
+    { value: 'hoisting', label: 'Hoisting', group: 'Web Technologies' },
+    { value: 'flexbox', label: 'Flexbox', group: 'Web Technologies' },
+    { value: 'grid', label: 'Grid', group: 'Web Technologies' },
+    { value: 'responsive-design', label: 'Responsive Design', group: 'Web Technologies' },
+    { value: 'react', label: 'React', group: 'React' },
+    { value: 'components', label: 'Components', group: 'React' },
+    { value: 'hooks', label: 'Hooks', group: 'React' },
+    { value: 'state-management', label: 'State Management', group: 'React' },
+    { value: 'props', label: 'Props', group: 'React' },
+    { value: 'context-api', label: 'Context API', group: 'React' },
+    { value: 'redux', label: 'Redux', group: 'React' },
+    { value: 'react-router', label: 'React Router', group: 'React' },
+    { value: 'jsx', label: 'JSX', group: 'React' },
+    { value: 'virtual-dom', label: 'Virtual DOM', group: 'React' },
+    { value: 'react-native', label: 'React Native', group: 'React Native' },
+    { value: 'native-components', label: 'Native Components', group: 'React Native' },
+    { value: 'navigation', label: 'Navigation', group: 'React Native' },
+    { value: 'flutter', label: 'Flutter', group: 'Flutter' },
+    { value: 'widgets', label: 'Widgets', group: 'Flutter' },
+    { value: 'state-management-flutter', label: 'State Management (Flutter)', group: 'Flutter' },
+    { value: 'dart', label: 'Dart', group: 'Flutter' },
+    { value: 'navigation-flutter', label: 'Navigation (Flutter)', group: 'Flutter' },
+    { value: 'ui-components', label: 'UI Components', group: 'Flutter' },
+    { value: 'express', label: 'Express', group: 'Express' },
+    { value: 'nodejs', label: 'Node.js', group: 'Express' },
+    { value: 'rest-api', label: 'REST API', group: 'Express' },
+    { value: 'middleware', label: 'Middleware', group: 'Express' },
+    { value: 'routing', label: 'Routing', group: 'Express' },
+    { value: 'authentication', label: 'Authentication', group: 'Express' },
+    { value: 'authorization', label: 'Authorization', group: 'Express' },
+    { value: 'jwt', label: 'JWT', group: 'Express' },
+    { value: 'express-middleware', label: 'Express Middleware', group: 'Express' },
+    { value: 'sql', label: 'SQL', group: 'SQL' },
+    { value: 'queries', label: 'Queries', group: 'SQL' },
+    { value: 'joins', label: 'Joins', group: 'SQL' },
+    { value: 'indexes', label: 'Indexes', group: 'SQL' },
+    { value: 'transactions', label: 'Transactions', group: 'SQL' },
+    { value: 'database-design', label: 'Database Design', group: 'SQL' },
+    { value: 'normalization', label: 'Normalization', group: 'SQL' },
+    { value: 'python', label: 'Python', group: 'Python' },
+    { value: 'functions', label: 'Functions', group: 'Python' },
+    { value: 'classes', label: 'Classes', group: 'Python' },
+    { value: 'modules', label: 'Modules', group: 'Python' },
+    { value: 'list-comprehensions', label: 'List Comprehensions', group: 'Python' },
+    { value: 'decorators', label: 'Decorators', group: 'Python' },
+    { value: 'generators', label: 'Generators', group: 'Python' },
+    { value: 'python-data-structures', label: 'Python Data Structures', group: 'Python' },
+    { value: 'variables', label: 'Variables', group: 'General' },
+    { value: 'arrays', label: 'Arrays', group: 'General' },
+    { value: 'objects', label: 'Objects', group: 'General' },
+    { value: 'loops', label: 'Loops', group: 'General' },
+    { value: 'conditionals', label: 'Conditionals', group: 'General' },
+    { value: 'algorithms', label: 'Algorithms', group: 'General' },
+    { value: 'data-structures', label: 'Data Structures', group: 'General' },
+    { value: 'error-handling', label: 'Error Handling', group: 'General' },
+    { value: 'testing', label: 'Testing', group: 'General' },
 ];
 
 // Helper to update nested object properties
 function setByPath<T extends object>(obj: T, path: string, value: unknown): T {
-  const parts = path.split(".");
-  const next = { ...obj } as any;
-  let cur = next;
-  for (let i = 0; i < parts.length - 1; i++) {
-    const k = parts[i];
-    cur[k] = Array.isArray(cur[k]) ? [...cur[k]] : { ...(cur[k] ?? {}) };
-    cur = cur[k];
-  }
-  cur[parts[parts.length - 1]] = value;
-  return next;
+    const parts = path.split('.');
+    const next = { ...obj } as any;
+    let cur = next;
+    for (let i = 0; i < parts.length - 1; i++) {
+        const k = parts[i];
+        cur[k] = Array.isArray(cur[k]) ? [...cur[k]] : { ...(cur[k] ?? {}) };
+        cur = cur[k];
+    }
+    cur[parts[parts.length - 1]] = value;
+    return next;
 }
 
 const QuestionFormComponent: React.FC<QuestionFormComponentProps> = ({
-  question,
-  onQuestionChange,
-  onSubmit,
-  submitLabel = "Save Question",
-  showSubmitButton = true,
-  showComplexityIndicator = true,
-  availableSkills = DEFAULT_SKILLS,
-  compact = false,
-  validationErrors = [],
-  onCancel,
+    question: initialQuestion = {},
+    onSubmitSuccess,
+    submitLabel = 'Save Question',
+    showSubmitButton = true,
+    compact = false,
+    onCancel,
 }) => {
-  const [isSubmitting, setIsSubmitting] = useState(false);
+    const navigate = useNavigate();
+    const { user } = useAuth();
+    const isSuperAdmin = user?.role === 'admin' && user?.organization?.isSuperOrg;
+    const [activeStep, setActiveStep] = useState(1);
+    const [errors, setErrors] = useState<string[]>([]);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const updateQuestion = (field: string, value: unknown) => {
-    const updatedQuestion = setByPath(question, field, value);
-    onQuestionChange(updatedQuestion);
-  };
-
-  const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
-  ) => {
-    const { name, value } = e.target;
-    if (name.startsWith("testCase.")) {
-      const [_, index, field] = name.split(".");
-      const testCases = [...(question.content.testCases || [])];
-      testCases[parseInt(index)] = {
-        ...testCases[parseInt(index)],
-        [field]: field === "points" ? parseInt(value) || 1 : value,
-      };
-      updateQuestion("content.testCases", testCases);
-    } else if (name === "tags") {
-      updateQuestion("tags", value.split(",").map((tag) => tag.trim()).filter(Boolean));
-    } else if (name === "content.hints") {
-      updateQuestion("content.hints", value.split("\n").filter((h) => h.trim()));
-    } else {
-      updateQuestion(name, value);
-    }
-  };
-
-  const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, checked } = e.target;
-    if (name.startsWith("testCase.")) {
-      const [_, index, field] = name.split(".");
-      const testCases = [...(question.content.testCases || [])];
-      testCases[parseInt(index)] = {
-        ...testCases[parseInt(index)],
-        [field]: checked,
-      };
-      updateQuestion("content.testCases", testCases);
-    } else {
-      updateQuestion(name, checked);
-    }
-  };
-
-  const handleTypeChange = (newType: Question["type"]) => {
-    const updatedQuestion = { ...question, type: newType };
-
-    // Reset content based on question type
-    switch (newType) {
-      case "multiple_choice":
-        updatedQuestion.content = {
-          ...question.content,
-          options: ["", "", "", ""],
-          correctAnswer: 0,
-          shuffleOptions: true,
-          correctBoolean: undefined,
-          language: undefined,
-          starterCode: undefined,
-          brokenCode: undefined,
-          bugHint: undefined,
-          testCases: [],
-          evaluationMode: "flexible",
-          mustUse: undefined,
-          cannotUse: undefined,
-          maxLinesChanged: undefined,
-          similarityThreshold: undefined,
-          bonusPoints: undefined,
-        };
-        break;
-      case "true_false":
-        updatedQuestion.content = {
-          ...question.content,
-          correctBoolean: undefined,
-          options: [],
-          correctAnswer: undefined,
-          language: undefined,
-          starterCode: undefined,
-          brokenCode: undefined,
-          bugHint: undefined,
-          testCases: [],
-          evaluationMode: "flexible",
-          mustUse: undefined,
-          cannotUse: undefined,
-          maxLinesChanged: undefined,
-          similarityThreshold: undefined,
-          bonusPoints: undefined,
-        };
-        break;
-      case "code_challenge":
-        updatedQuestion.content = {
-          ...question.content,
-          language: "javascript",
-          starterCode: "",
-          testCases: [],
-          evaluationMode: "flexible",
-          mustUse: [],
-          cannotUse: [],
-          correctBoolean: undefined,
-          options: [],
-          correctAnswer: undefined,
-          brokenCode: undefined,
-          bugHint: undefined,
-          maxLinesChanged: undefined,
-          similarityThreshold: undefined,
-          bonusPoints: undefined,
-        };
-        break;
-      case "debug_fix":
-        updatedQuestion.content = {
-          ...question.content,
-          language: "javascript",
-          brokenCode: "",
-          bugHint: "",
-          testCases: [],
-          evaluationMode: "flexible",
-          maxLinesChanged: 3,
-          similarityThreshold: 0.8,
-          correctBoolean: undefined,
-          options: [],
-          correctAnswer: undefined,
-          starterCode: undefined,
-          mustUse: [],
-          cannotUse: [],
-          bonusPoints: undefined,
-        };
-        break;
-    }
-
-    onQuestionChange(updatedQuestion);
-  };
-
-  const addOption = () => {
-    const newOptions = [...(question.content.options || []), ""];
-    updateQuestion("content.options", newOptions);
-  };
-
-  const removeOption = (index: number) => {
-    const newOptions = (question.content.options || []).filter((_, i) => i !== index);
-    const newCorrectAnswer =
-      question.content.correctAnswer !== undefined && question.content.correctAnswer >= index
-        ? Math.max(0, question.content.correctAnswer - 1)
-        : question.content.correctAnswer;
-
-    updateQuestion("content.options", newOptions);
-    if (newOptions.length > 0) {
-      updateQuestion("content.correctAnswer", newCorrectAnswer);
-    }
-  };
-
-  const addTestCase = () => {
-    const newTestCases = [
-      ...(question.content.testCases || []),
-      {
-        description: "",
-        functionCall: "",
-        expected: "",
-        points: 1,
-        hidden: false,
-        shouldFail: false,
-        brokenResult: "",
-      },
-    ];
-    updateQuestion("content.testCases", newTestCases);
-  };
-
-  const removeTestCase = (index: number) => {
-    const newTestCases = (question.content.testCases || []).filter((_, i) => i !== index);
-    updateQuestion("content.testCases", newTestCases);
-  };
-
-  const handleEvaluationMode = (mode: Question["content"]["evaluationMode"]) => {
-    updateQuestion("content.evaluationMode", mode);
-  };
-
-  const calculateComplexity = () => {
-    const { type, content } = question;
-    let complexity = 15; // Default: Very Simple
-    if (type === "true_false" || type === "multiple_choice") {
-      complexity = content.codeSnippet ? 25 : 15;
-    } else if (type === "debug_fix") {
-      complexity = content.evaluationMode === "minimal_fix" ? 65 : 45;
-    } else if (type === "code_challenge") {
-      complexity = content.evaluationMode === "flexible" ? 40 : 80;
-    }
-    return {
-      value: complexity,
-      label:
-        complexity <= 25 ? "Very Simple" :
-        complexity <= 50 ? "Simple" :
-        complexity <= 75 ? "Medium" : "Complex",
-      color:
-        complexity <= 25 ? "success" :
-        complexity <= 50 ? "warning" :
-        complexity <= 75 ? "warning" : "danger",
+    // Initialize state with user-based defaults
+    const initialState: Partial<Question> = {
+        type: undefined,
+        title: '',
+        description: '',
+        difficulty: undefined,
+        status: 'draft',
+        // FIXED: Super admin logic - explicitly set true/false
+        isGlobal: isSuperAdmin ? true : false,
+        organizationId: isSuperAdmin ? undefined : user?.organizationId,
+        options: [],
+        testCases: [],
+        correctAnswer: undefined,
+        language: 'javascript',
+        tags: [],
+        usageStats: { timesUsed: 0, totalAttempts: 0, correctAttempts: 0, successRate: 0, averageTime: 0 },
+        createdBy: user?.id,
+        ...initialQuestion,
     };
-  };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!onSubmit) return;
+    const [question, setQuestion] = useState<Partial<Question>>(initialState);
 
-    setIsSubmitting(true);
-    try {
-      await onSubmit(question);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+    const updateQuestion = useCallback((field: string, value: unknown) => {
+        setQuestion((prev) => setByPath(prev, field, value));
+    }, []);
 
-  const complexity = calculateComplexity();
-  const allErrors = [...validationErrors];
+    const validateStep = (step: number): string[] => {
+        const stepErrors: string[] = [];
+        if (step === 1) {
+            if (!question.title?.trim()) stepErrors.push('Question title is required');
+            if (!question.type) stepErrors.push('Question type is required');
+            if (!question.language) stepErrors.push('Programming language is required');
+            if (!question.difficulty) stepErrors.push('Difficulty is required');
+        } else if (step === 2) {
+            if (!question.description?.trim()) stepErrors.push('Question text is required');
+            if (question.type === 'multipleChoice') {
+                if (!question.options || question.options.slice(1).length < 2 || question.options.slice(1).some((opt) => !opt.trim())) {
+                    stepErrors.push('At least two multiple choice options must be filled');
+                }
+                if (question.correctAnswer === undefined || typeof question.correctAnswer !== 'number') {
+                    stepErrors.push('A correct answer must be selected');
+                }
+            }
+            if (question.type === 'trueFalse') {
+                if (question.correctAnswer === undefined) {
+                    stepErrors.push('True or False must be selected');
+                }
+            }
+            if (question.type === 'codeDebugging' && (!question.options?.[0]?.trim())) {
+                stepErrors.push('Broken code is required for code debugging questions');
+            }
+            if ((question.type === 'codeChallenge' || question.type === 'codeDebugging') && (!question.testCases || question.testCases.length === 0)) {
+                stepErrors.push('At least one test case is required for code questions');
+            }
+        }
+        return stepErrors;
+    };
 
-  return (
-    <div className="position-relative">
-      {showComplexityIndicator && !compact && (
-        <div
-          style={{
-            position: "absolute",
-            top: "20px",
-            right: "20px",
-            background: "white",
-            border: "1px solid #e5e7eb",
-            borderRadius: "8px",
-            padding: "12px",
-            boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
-            zIndex: 10,
-          }}
-        >
-          <h4 className="mb-2" style={{ fontSize: "13px", color: "#374151" }}>
-            Complexity
-          </h4>
-          <Progress value={complexity.value} color={complexity.color} style={{ width: "100px", height: "4px" }} />
-          <div className="text-muted mt-1" style={{ fontSize: "12px" }}>
-            {complexity.label}
-          </div>
+    const handleNext = () => {
+        const stepErrors = validateStep(activeStep);
+        setErrors(stepErrors);
+        if (stepErrors.length === 0 && activeStep < 3) {
+            setActiveStep(activeStep + 1);
+        }
+    };
+
+    const handlePrevious = () => {
+        if (activeStep > 1) {
+            setActiveStep(activeStep - 1);
+            setErrors([]);
+        }
+    };
+
+    const handleInputChange = (
+        e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
+    ) => {
+        const { name, value } = e.target;
+        if (name.startsWith('testCase.')) {
+            const [_, index, field] = name.split('.');
+            const testCases = [...(question.testCases || [])];
+            testCases[parseInt(index)] = {
+                ...testCases[parseInt(index)],
+                [field]: value,
+            };
+            updateQuestion('testCases', testCases);
+        } else {
+            updateQuestion(name, value);
+        }
+    };
+
+    const handleTagToggle = (tagValue: Tags) => {
+        const currentTags = question.tags || [];
+        const newTags = currentTags.includes(tagValue)
+            ? currentTags.filter((tag) => tag !== tagValue)
+            : [...currentTags, tagValue];
+        updateQuestion('tags', newTags);
+    };
+
+    const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, checked } = e.target;
+        if (name.startsWith('testCase.')) {
+            const [_, index, field] = name.split('.');
+            const testCases = [...(question.testCases || [])];
+            testCases[parseInt(index)] = {
+                ...testCases[parseInt(index)],
+                [field]: checked,
+            };
+            updateQuestion('testCases', testCases);
+        }
+    };
+
+    const handleCodeChange = (value: string | undefined, field: string) => {
+        const newOptions = [...(question.options || [''])];
+        newOptions[0] = value || '';
+        updateQuestion(field, newOptions);
+    };
+
+    const handleTypeChange = (newType: Question['type']) => {
+        const updatedQuestion: Partial<Question> = {
+            ...question,
+            type: newType,
+            // FIXED: Super admin logic - explicitly set true/false
+            isGlobal: isSuperAdmin ? true : false,
+            organizationId: isSuperAdmin ? undefined : user?.organizationId,
+        };
+        switch (newType) {
+            case 'multipleChoice':
+                updatedQuestion.options = ['', '', '', ''];
+                updatedQuestion.correctAnswer = 0;
+                updatedQuestion.testCases = [];
+                break;
+            case 'trueFalse':
+                updatedQuestion.options = ['true', 'false'];
+                updatedQuestion.correctAnswer = undefined;
+                updatedQuestion.testCases = [];
+                break;
+            case 'codeChallenge':
+                updatedQuestion.testCases = [];
+                updatedQuestion.options = [];
+                updatedQuestion.correctAnswer = undefined;
+                break;
+            case 'codeDebugging':
+                updatedQuestion.options = [''];
+                updatedQuestion.testCases = [];
+                updatedQuestion.correctAnswer = undefined;
+                break;
+        }
+        setQuestion(updatedQuestion);
+    };
+
+    const addOption = () => {
+        const newOptions = [...(question.options || []), ''];
+        updateQuestion('options', newOptions);
+    };
+
+    const removeOption = (index: number) => {
+        const newOptions = (question.options || []).filter((_, i) => i !== index);
+        const newCorrectAnswer =
+            typeof question.correctAnswer === 'number' && question.correctAnswer >= index
+                ? Math.max(0, question.correctAnswer - 1)
+                : question.correctAnswer;
+        updateQuestion('options', newOptions);
+        if (newOptions.length > 0) {
+            updateQuestion('correctAnswer', newCorrectAnswer);
+        }
+    };
+
+    const addTestCase = () => {
+        const newTestCases = [
+            ...(question.testCases || []),
+            {
+                input: '',
+                output: '',
+                hidden: false,
+            },
+        ];
+        updateQuestion('testCases', newTestCases);
+    };
+
+    const removeTestCase = (index: number) => {
+        const newTestCases = (question.testCases || []).filter((_, i) => i !== index);
+        updateQuestion('testCases', newTestCases);
+    };
+
+    const getMonacoLanguage = (language: Language | undefined): string => {
+        switch (language) {
+            case 'react':
+            case 'reactNative':
+            case 'express':
+                return 'javascript';
+            case 'flutter':
+                return 'dart';
+            case 'typescript':
+                return 'typescript';
+            case 'javascript':
+                return 'javascript';
+            case 'html':
+                return 'html';
+            case 'css':
+                return 'css';
+            case 'json':
+                return 'json';
+            case 'sql':
+                return 'sql';
+            case 'python':
+                return 'python';
+            case 'dart':
+                return 'dart';
+            default:
+                return 'plaintext';
+        }
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const stepErrors = [...validateStep(1), ...validateStep(2)];
+        setErrors(stepErrors);
+        if (stepErrors.length > 0) return;
+
+        if (!user?.id) {
+            setErrors(['User authentication required to save question']);
+            return;
+        }
+
+        setIsSubmitting(true);
+        try {
+            let response;
+            const questionData: Partial<Question> = {
+                title: question.title,
+                description: question.description,
+                type: question.type,
+                language: question.language,
+                difficulty: question.difficulty,
+                status: question.status || 'draft',
+                tags: Array.isArray(question.tags) ? [...question.tags] : [],
+                options: question.type === 'codeDebugging' || question.type === 'multipleChoice' ?
+                    (question.options || []) :
+                    question.type === 'trueFalse' ? ['true', 'false'] : undefined,
+                correctAnswer: question.correctAnswer,
+                testCases: question.testCases,
+                isGlobal: isSuperAdmin ? true : false,
+                // ✅ REMOVED: Don't send organizationId - let backend determine it based on user
+                createdBy: user.id,
+            };
+
+            console.log('Submitting questionData:', JSON.stringify(questionData, null, 2));
+            console.log('User:', user);
+            console.log('isSuperAdmin:', isSuperAdmin);
+            console.log('Question status before submit:', question.status);
+
+            if (question.id) {
+                response = await apiService.updateQuestion(question.id, questionData);
+            } else {
+                response = await apiService.createQuestion(questionData);
+            }
+
+            if (response.error) {
+                setErrors([response.message || 'Failed to save question']);
+                return;
+            }
+
+            if (response.data) {
+                onSubmitSuccess?.(response.data);
+                navigate('/admin/question-bank');
+            }
+        } catch (err) {
+            console.error('Submission error:', err);
+            setErrors(['An unexpected error occurred while saving the question']);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const renderSummary = () => (
+        <div>
+            <h6 className="mb-3">Basic Information</h6>
+            <div><strong>Title:</strong> {question.title || 'Not set'}</div>
+            <div><strong>Type:</strong> {question.type || 'Not set'}</div>
+            <div><strong>Language:</strong> {PROGRAMMING_LANGUAGES.find((lang) => lang.value === question.language)?.label || 'Not set'}</div>
+            <div><strong>Difficulty:</strong> {question.difficulty || 'Not set'}</div>
+            <div><strong>Status:</strong> {question.status || 'Not set'}</div>
+            <div><strong>Global:</strong> {isSuperAdmin ? 'Yes (Super Admin)' : 'No'}</div>
+            <div><strong>Tags:</strong> {question.tags?.length ? question.tags.join(', ') : 'None'}</div>
+            <hr />
+            <h6 className="mb-3">Question Content</h6>
+            <div><strong>Description:</strong> {question.description || 'Not set'}</div>
+            {['multipleChoice'].includes(question.type || '') && (
+                <>
+                    <div><strong>Code Snippet:</strong></div>
+                    {question.options?.[0] ? <pre>{question.options[0]}</pre> : <div>None</div>}
+                    <div><strong>Options:</strong></div>
+                    <ul>
+                        {(question.options || []).slice(1).map((opt, index) => (
+                            <li key={index}>
+                                {String.fromCharCode(65 + index)}: {opt || 'Not set'} {question.correctAnswer === index + 1 ? '(Correct)' : ''}
+                            </li>
+                        ))}
+                    </ul>
+                </>
+            )}
+            {question.type === 'trueFalse' && (
+                <div><strong>Correct Answer:</strong> {question.correctAnswer !== undefined ? String(question.correctAnswer) : 'Not set'}</div>
+            )}
+            {['codeChallenge', 'codeDebugging'].includes(question.type || '') && (
+                <>
+                    <div><strong>{question.type === 'codeDebugging' ? 'Broken Code' : 'Starter Code'}:</strong></div>
+                    {question.options?.[0] ? <pre>{question.options[0]}</pre> : <div>None</div>}
+                    <div><strong>Test Cases:</strong></div>
+                    {question.testCases?.length ? (
+                        <ul>
+                            {question.testCases.map((tc, index) => (
+                                <li key={index}>
+                                    Input: {tc.input || 'Not set'}, Output: {tc.output || 'Not set'}, Hidden: {tc.hidden ? 'Yes' : 'No'}
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <div>None</div>
+                    )}
+                </>
+            )}
         </div>
-      )}
+    );
 
-      {allErrors.length > 0 && (
-        <Alert color="danger" className="mb-3">
-          {allErrors.map((error, index) => (
-            <div key={index}>{error}</div>
-          ))}
-        </Alert>
-      )}
-
-      <Form onSubmit={handleSubmit}>
-        {/* Basic Info */}
-        <Row className={compact ? "mb-2" : "mb-3"}>
-          <Col md={compact ? "12" : "6"}>
-            <FormGroup>
-              <Label for="title">Question Title *</Label>
-              <Input
-                type="text"
-                id="title"
-                name="title"
-                value={question.title}
-                onChange={handleInputChange}
-                placeholder="e.g., JavaScript Variable Hoisting"
-                bsSize={compact ? "sm" : undefined}
-              />
-            </FormGroup>
-          </Col>
-          {!compact && (
-            <Col md="6">
-              <FormGroup>
-                <Label for="type">Question Type *</Label>
-                <Input
-                  type="select"
-                  id="type"
-                  name="type"
-                  value={question.type}
-                  onChange={(e) => handleTypeChange(e.target.value as Question["type"])}
-                >
-                  <option value="">Select type</option>
-                  <option value="true_false">True/False</option>
-                  <option value="multiple_choice">Multiple Choice</option>
-                  <option value="code_challenge">Code Challenge</option>
-                  <option value="debug_fix">Debug & Fix</option>
-                </Input>
-              </FormGroup>
-            </Col>
-          )}
-        </Row>
-
-        {compact && (
-          <Row className="mb-2">
-            <Col md="6">
-              <FormGroup>
-                <Label for="type">Type *</Label>
-                <Input
-                  type="select"
-                  id="type"
-                  name="type"
-                  value={question.type}
-                  onChange={(e) => handleTypeChange(e.target.value as Question["type"])}
-                  bsSize="sm"
-                >
-                  <option value="">Select type</option>
-                  <option value="true_false">True/False</option>
-                  <option value="multiple_choice">Multiple Choice</option>
-                  <option value="code_challenge">Code Challenge</option>
-                  <option value="debug_fix">Debug & Fix</option>
-                </Input>
-              </FormGroup>
-            </Col>
-            <Col md="6">
-              <FormGroup>
-                <Label for="skill">Skill *</Label>
-                <Input
-                  type="select"
-                  id="skill"
-                  name="skill"
-                  value={question.skill}
-                  onChange={handleInputChange}
-                  bsSize="sm"
-                >
-                  <option value="">Select skill</option>
-                  {availableSkills.map((skill) => (
-                    <option key={skill} value={skill}>
-                      {skill.charAt(0).toUpperCase() + skill.slice(1).replace("-", " ")}
-                    </option>
-                  ))}
-                </Input>
-              </FormGroup>
-            </Col>
-          </Row>
-        )}
-
-        {!compact && (
-          <Row className="mb-3">
-            <Col md="4">
-              <FormGroup>
-                <Label for="skill">Subject *</Label>
-                <Input
-                  type="select"
-                  id="skill"
-                  name="skill"
-                  value={question.skill}
-                  onChange={handleInputChange}
-                >
-                  <option value="">Select skill</option>
-                  {availableSkills.map((skill) => (
-                    <option key={skill} value={skill}>
-                      {skill.charAt(0).toUpperCase() + skill.slice(1).replace("-", " ")}
-                    </option>
-                  ))}
-                </Input>
-              </FormGroup>
-            </Col>
-            <Col md="4">
-              <FormGroup>
-                <Label for="difficulty">Difficulty *</Label>
-                <Input
-                  type="select"
-                  id="difficulty"
-                  name="difficulty"
-                  value={question.difficulty}
-                  onChange={handleInputChange}
-                >
-                  <option value="">Select difficulty</option>
-                  <option value="beginner">Beginner</option>
-                  <option value="intermediate">Intermediate</option>
-                  <option value="advanced">Advanced</option>
-                </Input>
-              </FormGroup>
-            </Col>
-            <Col md="4">
-              <FormGroup>
-                <Label for="points">Points</Label>
-                <Input
-                  type="number"
-                  id="points"
-                  name="points"
-                  value={question.points}
-                  onChange={handleInputChange}
-                  min={1}
-                />
-              </FormGroup>
-            </Col>
-          </Row>
-        )}
-
-        <FormGroup className={compact ? "mb-2" : "mb-3"}>
-          <Label for="description">Question Text *</Label>
-          <Input
-            type="textarea"
-            id="description"
-            name="description"
-            value={question.description}
-            onChange={handleInputChange}
-            placeholder="e.g., What will be the output of the following code?"
-            rows={compact ? 2 : 4}
-            bsSize={compact ? "sm" : undefined}
-          />
-        </FormGroup>
-
-        {/* Code Snippet (for true/false and multiple choice) */}
-        <Collapse isOpen={["true_false", "multiple_choice"].includes(question.type)}>
-          <FormGroup className={compact ? "mb-2" : "mb-3"}>
-            <Label for="content.codeSnippet">Code Snippet (Optional)</Label>
-            <Input
-              type="textarea"
-              id="content.codeSnippet"
-              name="content.codeSnippet"
-              value={question.content.codeSnippet || ""}
-              onChange={handleInputChange}
-              placeholder="Enter code snippet"
-              rows={compact ? 3 : 6}
-              style={{ fontFamily: "monospace", fontSize: "13px" }}
-              bsSize={compact ? "sm" : undefined}
-            />
-            {!compact && (
-              <div className="text-muted mt-1" style={{ fontSize: "12px" }}>
-                Include code that the question refers to
-              </div>
-            )}
-          </FormGroup>
-        </Collapse>
-
-        {/* True/False Section */}
-        <Collapse isOpen={question.type === "true_false"}>
-          <Card className="mb-3 border-0 shadow-sm">
-            <CardBody>
-              <CardTitle tag="h3" className={compact ? "h6 mb-2" : "h5 mb-3"}>
-                True or False *
-              </CardTitle>
-              <FormGroup>
-                <Button
-                  type="button"
-                  color={question.content.correctBoolean === true ? "success" : "outline-success"}
-                  onClick={() => updateQuestion("content.correctBoolean", true)}
-                  className="me-3"
-                  size={compact ? "sm" : undefined}
-                >
-                  True
-                </Button>
-                <Button
-                  type="button"
-                  color={question.content.correctBoolean === false ? "danger" : "outline-danger"}
-                  onClick={() => updateQuestion("content.correctBoolean", false)}
-                  size={compact ? "sm" : undefined}
-                >
-                  False
-                </Button>
-              </FormGroup>
-            </CardBody>
-          </Card>
-        </Collapse>
-
-        {/* Multiple Choice Section */}
-        <Collapse isOpen={question.type === "multiple_choice"}>
-          <Card className="mb-3 border-0 shadow-sm">
-            <CardBody>
-              <CardTitle tag="h3" className={compact ? "h6 mb-2" : "h5 mb-3"}>
-                Answer Options *
-              </CardTitle>
-              {(question.content.options || []).map((option, index) => (
-                <FormGroup key={index} className="mb-2">
-                  <div className="d-flex align-items-center mb-2">
-                    <Input
-                      type="radio"
-                      name="correctAnswer"
-                      value={index}
-                      checked={question.content.correctAnswer === index}
-                      onChange={() => updateQuestion("content.correctAnswer", index)}
-                      className="me-2"
-                    />
-                    <Label className="mb-0 me-2">Option {String.fromCharCode(65 + index)}</Label>
-                    {(question.content.options || []).length > 2 && (
-                      <Button
-                        type="button"
-                        color="outline-danger"
-                        size="sm"
-                        onClick={() => removeOption(index)}
-                      >
-                        ×
-                      </Button>
-                    )}
-                  </div>
-                  <Input
-                    type="text"
-                    value={option}
-                    onChange={(e) => {
-                      const newOptions = [...(question.content.options || [])];
-                      newOptions[index] = e.target.value;
-                      updateQuestion("content.options", newOptions);
-                    }}
-                    placeholder={`Enter option ${String.fromCharCode(65 + index)}`}
-                    style={{ marginLeft: "28px" }}
-                    bsSize={compact ? "sm" : undefined}
-                  />
-                </FormGroup>
-              ))}
-              <Button
-                type="button"
-                color="success"
-                size="sm"
-                onClick={addOption}
-                className="mt-2 me-2"
-              >
-                + Add Option
-              </Button>
-              {!compact && (
-                <FormGroup className="mt-3">
-                  <Label check>
-                    <Input
-                      type="checkbox"
-                      name="content.shuffleOptions"
-                      checked={question.content.shuffleOptions ?? true}
-                      onChange={handleCheckboxChange}
-                    />
-                    Shuffle answer options for each student
-                  </Label>
-                </FormGroup>
-              )}
-            </CardBody>
-          </Card>
-        </Collapse>
-
-        {/* Debug & Fix Section */}
-        <Collapse isOpen={question.type === "debug_fix"}>
-          <Card className="mb-3 border-0 shadow-sm">
-            <CardBody>
-              <CardTitle tag="h3" className={compact ? "h6 mb-2" : "h5 mb-3"}>
-                Debug & Fix Setup
-              </CardTitle>
-              <FormGroup>
-                <Label for="content.brokenCode">Broken Code *</Label>
-                <Input
-                  type="textarea"
-                  id="content.brokenCode"
-                  name="content.brokenCode"
-                  value={question.content.brokenCode || ""}
-                  onChange={handleInputChange}
-                  placeholder="Enter broken code"
-                  rows={compact ? 3 : 6}
-                  style={{ fontFamily: "monospace", fontSize: "13px" }}
-                  bsSize={compact ? "sm" : undefined}
-                />
-                {!compact && (
-                  <div className="text-muted mt-1" style={{ fontSize: "12px" }}>
-                    Provide code with intentional bugs for students to fix
-                  </div>
-                )}
-              </FormGroup>
-              <FormGroup>
-                <Label for="content.bugHint">Bug Hint (Optional)</Label>
-                <Input
-                  type="text"
-                  id="content.bugHint"
-                  name="content.bugHint"
-                  value={question.content.bugHint || ""}
-                  onChange={handleInputChange}
-                  placeholder="e.g., This function doesn't work with negative numbers..."
-                  bsSize={compact ? "sm" : undefined}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label for="content.language">Language *</Label>
-                <Input
-                  type="select"
-                  id="content.language"
-                  name="content.language"
-                  value={question.content.language || ""}
-                  onChange={handleInputChange}
-                  bsSize={compact ? "sm" : undefined}
-                >
-                  <option value="">Select language</option>
-                  {PROGRAMMING_LANGUAGES.map((lang) => (
-                    <option key={lang.value} value={lang.value}>
-                      {lang.label}
-                    </option>
-                  ))}
-                </Input>
-              </FormGroup>
-              {!compact && (
-                <>
-                  <FormGroup>
-                    <Label>How should the fixed code be graded?</Label>
-                    <div className="d-grid gap-2">
-                      <Button
-                        type="button"
-                        color={question.content.evaluationMode === "flexible" ? "primary" : "outline-primary"}
-                        onClick={() => handleEvaluationMode("flexible")}
-                        className="mb-2"
-                        size="sm"
-                      >
-                        Check Output Only
-                      </Button>
-                      <Button
-                        type="button"
-                        color={question.content.evaluationMode === "minimal_fix" ? "primary" : "outline-primary"}
-                        onClick={() => handleEvaluationMode("minimal_fix")}
-                        size="sm"
-                      >
-                        Minimal Fix Required
-                      </Button>
-                    </div>
-                  </FormGroup>
-                  <Collapse isOpen={question.content.evaluationMode === "minimal_fix"}>
-                    <Card className="mt-3 bg-light border-0">
-                      <CardBody>
-                        <CardTitle tag="h4" className="h6 mb-3">
-                          Minimal Fix Settings
-                        </CardTitle>
-                        <Row>
-                          <Col md="6">
-                            <FormGroup>
-                              <Label for="content.maxLinesChanged">Max Lines Changed</Label>
-                              <Input
-                                type="number"
-                                id="content.maxLinesChanged"
-                                name="content.maxLinesChanged"
-                                value={question.content.maxLinesChanged ?? ""}
-                                onChange={handleInputChange}
-                                placeholder="e.g., 3"
-                                min={1}
-                                bsSize="sm"
-                              />
-                            </FormGroup>
-                          </Col>
-                          <Col md="6">
-                            <FormGroup>
-                              <Label for="content.similarityThreshold">Similarity Threshold</Label>
-                              <Input
-                                type="select"
-                                id="content.similarityThreshold"
-                                name="content.similarityThreshold"
-                                value={question.content.similarityThreshold ?? ""}
-                                onChange={handleInputChange}
-                                bsSize="sm"
-                              >
-                                <option value="">Select threshold</option>
-                                <option value="0.7">70% - Allow some changes</option>
-                                <option value="0.8">80% - Minimal changes only</option>
-                                <option value="0.9">90% - Very minimal changes</option>
-                              </Input>
-                            </FormGroup>
-                          </Col>
+    return (
+        <div style={{ backgroundColor: '#f8f9fa', minHeight: '100vh', marginTop: '20px' }}>
+            <div className="bg-white shadow-sm border-bottom">
+                <Container>
+                    <div className="py-3">
+                        <Row className="align-items-center">
+                            <Col>
+                                <div className="d-flex align-items-center">
+                                    <BookOpen className="me-3 text-success icon-lg" />
+                                    <div>
+                                        <h1 className="h4 mb-0">
+                                            {question.id ? 'Edit Question' : 'Create New Question'}
+                                        </h1>
+                                        <p className="text-muted mb-0 small">
+                                            {question.id ? 'Update an existing question in the question bank' : 'Add a new question to the question bank'}
+                                        </p>
+                                    </div>
+                                </div>
+                            </Col>
+                            <Col xs="auto">
+                                <div className="d-flex align-items-center gap-2">
+                                    {isSuperAdmin && (
+                                        <Badge color="primary" className="d-flex align-items-center">
+                                            <Globe className="me-1 icon-xs" />
+                                            Global
+                                        </Badge>
+                                    )}
+                                    {question.status && (
+                                        <Badge
+                                            color={
+                                                question.status === 'active' ? 'success' :
+                                                    question.status === 'draft' ? 'warning' : 'secondary'
+                                            }
+                                            className="d-flex align-items-center"
+                                        >
+                                            <CheckCircle className="me-1 icon-xs" />
+                                            {question.status.charAt(0).toUpperCase() + question.status.slice(1)}
+                                        </Badge>
+                                    )}
+                                </div>
+                            </Col>
                         </Row>
-                      </CardBody>
-                    </Card>
-                  </Collapse>
-                </>
-              )}
-            </CardBody>
-          </Card>
-        </Collapse>
-
-        {/* Code Challenge Section */}
-        <Collapse isOpen={question.type === "code_challenge"}>
-          <Card className="mb-3 border-0 shadow-sm">
-            <CardBody>
-              <CardTitle tag="h3" className={compact ? "h6 mb-2" : "h5 mb-3"}>
-                Code Challenge Setup
-              </CardTitle>
-              <FormGroup>
-                <Label for="content.starterCode">Starter Code (Optional)</Label>
-                <Input
-                  type="textarea"
-                  id="content.starterCode"
-                  name="content.starterCode"
-                  value={question.content.starterCode || ""}
-                  onChange={handleInputChange}
-                  placeholder="e.g., function filterArray(arr, callback) { ... }"
-                  rows={compact ? 3 : 6}
-                  style={{ fontFamily: "monospace", fontSize: "13px" }}
-                  bsSize={compact ? "sm" : undefined}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label for="content.language">Language *</Label>
-                <Input
-                  type="select"
-                  id="content.language"
-                  name="content.language"
-                  value={question.content.language || ""}
-                  onChange={handleInputChange}
-                  bsSize={compact ? "sm" : undefined}
-                >
-                  <option value="">Select language</option>
-                  {PROGRAMMING_LANGUAGES.map((lang) => (
-                    <option key={lang.value} value={lang.value}>
-                      {lang.label}
-                    </option>
-                  ))}
-                </Input>
-              </FormGroup>
-              {!compact && (
-                <>
-                  <FormGroup>
-                    <Label>How should this be graded?</Label>
-                    <div className="d-grid gap-2">
-                      <Button
-                        type="button"
-                        color={question.content.evaluationMode === "flexible" ? "primary" : "outline-primary"}
-                        onClick={() => handleEvaluationMode("flexible")}
-                        className="mb-2"
-                        size="sm"
-                      >
-                        Flexible (Recommended)
-                      </Button>
-                      <Button
-                        type="button"
-                        color={question.content.evaluationMode === "strict" ? "primary" : "outline-primary"}
-                        onClick={() => handleEvaluationMode("strict")}
-                        size="sm"
-                      >
-                        Strict Requirements
-                      </Button>
                     </div>
-                  </FormGroup>
-                  <Collapse isOpen={question.content.evaluationMode === "strict"}>
-                    <Card className="mt-3 bg-light border-0">
-                      <CardBody>
-                        <CardTitle tag="h4" className="h6 mb-3">
-                          Implementation Requirements
-                        </CardTitle>
-                        <Row>
-                          <Col md="6">
-                            <FormGroup>
-                              <Label for="content.mustUse">Must Use</Label>
-                              <Input
-                                type="text"
-                                id="content.mustUse"
-                                name="content.mustUse"
-                                value={question.content.mustUse?.join(", ") || ""}
-                                onChange={(e) =>
-                                  updateQuestion(
-                                    "content.mustUse",
-                                    e.target.value.split(",").map((v) => v.trim()).filter(Boolean),
-                                  )
-                                }
-                                placeholder="e.g., for, callback"
-                                bsSize="sm"
-                              />
-                            </FormGroup>
-                          </Col>
-                          <Col md="6">
-                            <FormGroup>
-                              <Label for="content.cannotUse">Cannot Use</Label>
-                              <Input
-                                type="text"
-                                id="content.cannotUse"
-                                name="content.cannotUse"
-                                value={question.content.cannotUse?.join(", ") || ""}
-                                onChange={(e) =>
-                                  updateQuestion(
-                                    "content.cannotUse",
-                                    e.target.value.split(",").map((v) => v.trim()).filter(Boolean),
-                                  )
-                                }
-                                placeholder="e.g., map, filter"
-                                bsSize="sm"
-                              />
-                            </FormGroup>
-                          </Col>
-                        </Row>
-                      </CardBody>
-                    </Card>
-                  </Collapse>
-                </>
-              )}
-            </CardBody>
-          </Card>
-        </Collapse>
-
-        {/* Test Cases (for coding questions) */}
-        <Collapse isOpen={["code_challenge", "debug_fix"].includes(question.type)}>
-          <Card className="mb-3 border-0 shadow-sm">
-            <CardBody>
-              <CardTitle tag="h3" className={compact ? "h6 mb-2" : "h5 mb-3"}>
-                Test Cases
-              </CardTitle>
-              {!compact && (
-                <div className="text-muted mb-3">
-                  Add test cases to validate the student's code.
-                </div>
-              )}
-              {(question.content.testCases || []).map((testCase, index) => (
-                <Card key={index} className="mb-3 bg-light border-0">
-                  <CardBody>
-                    <div className="d-flex justify-content-between align-items-center mb-2">
-                      <div className={compact ? "h6 mb-0" : "h6 mb-0"}>
-                        Test Case {index + 1}
-                      </div>
-                      <Button
-                        type="button"
-                        color="danger"
-                        size="sm"
-                        onClick={() => removeTestCase(index)}
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                    <Row>
-                      <Col md={compact ? "12" : "6"}>
-                        <FormGroup>
-                          <Label for={`testCase.${index}.description`}>Description</Label>
-                          <Input
-                            type="text"
-                            id={`testCase.${index}.description`}
-                            name={`testCase.${index}.description`}
-                            value={testCase.description || ""}
-                            onChange={handleInputChange}
-                            placeholder="e.g., Filter numbers greater than 2"
-                            bsSize={compact ? "sm" : undefined}
-                          />
-                        </FormGroup>
-                      </Col>
-                      {!compact && (
-                        <Col md="6">
-                          <FormGroup>
-                            <Label for={`testCase.${index}.points`}>Points</Label>
-                            <Input
-                              type="number"
-                              id={`testCase.${index}.points`}
-                              name={`testCase.${index}.points`}
-                              value={testCase.points}
-                              onChange={handleInputChange}
-                              placeholder="e.g., 2"
-                              min={1}
-                            />
-                          </FormGroup>
-                        </Col>
-                      )}
-                    </Row>
-                    <Row>
-                      <Col md={compact ? "12" : "6"}>
-                        <FormGroup>
-                          <Label for={`testCase.${index}.functionCall`}>Function Call</Label>
-                          <Input
-                            type="text"
-                            id={`testCase.${index}.functionCall`}
-                            name={`testCase.${index}.functionCall`}
-                            value={testCase.functionCall || ""}
-                            onChange={handleInputChange}
-                            placeholder="e.g., filterArray([1,2,3], x => x > 2)"
-                            style={{ fontFamily: "monospace", fontSize: "13px" }}
-                            bsSize={compact ? "sm" : undefined}
-                          />
-                        </FormGroup>
-                      </Col>
-                      <Col md={compact ? "12" : "6"}>
-                        <FormGroup>
-                          <Label for={`testCase.${index}.expected`}>Expected Result</Label>
-                          <Input
-                            type="text"
-                            id={`testCase.${index}.expected`}
-                            name={`testCase.${index}.expected`}
-                            value={testCase.expected || ""}
-                            onChange={handleInputChange}
-                            placeholder="e.g., [3]"
-                            style={{ fontFamily: "monospace", fontSize: "13px" }}
-                            bsSize={compact ? "sm" : undefined}
-                          />
-                        </FormGroup>
-                      </Col>
-                    </Row>
-                    {question.type === "debug_fix" && !compact && (
-                      <FormGroup>
-                        <Label for={`testCase.${index}.brokenResult`}>Broken Code Result (Optional)</Label>
-                        <Input
-                          type="text"
-                          id={`testCase.${index}.brokenResult`}
-                          name={`testCase.${index}.brokenResult`}
-                          value={testCase.brokenResult || ""}
-                          onChange={handleInputChange}
-                          placeholder="e.g., 0 (incorrect)"
-                          style={{ fontFamily: "monospace", fontSize: "13px" }}
-                        />
-                        <div className="text-muted mt-1" style={{ fontSize: "12px" }}>
-                          What the buggy code outputs
+                </Container>
+            </div>
+            <Container className="py-4">
+                {errors.length > 0 && (
+                    <Alert color="danger" className="mb-4 d-flex align-items-start">
+                        <AlertCircle className="me-2 mt-1 icon-sm flex-shrink-0" />
+                        <div>
+                            <strong>Please fix the following errors:</strong>
+                            <ul className="mb-0 mt-2">
+                                {errors.map((err, index) => (
+                                    <li key={index}>{err}</li>
+                                ))}
+                            </ul>
                         </div>
-                      </FormGroup>
-                    )}
-                    {!compact && (
-                      <>
-                        <FormGroup check>
-                          <Label check>
-                            <Input
-                              type="checkbox"
-                              name={`testCase.${index}.hidden`}
-                              checked={testCase.hidden}
-                              onChange={handleCheckboxChange}
-                            />
-                            Hidden from student
-                          </Label>
-                        </FormGroup>
-                        <FormGroup check>
-                          <Label check>
-                            <Input
-                              type="checkbox"
-                              name={`testCase.${index}.shouldFail`}
-                              checked={testCase.shouldFail}
-                              onChange={handleCheckboxChange}
-                            />
-                            Should fail in broken code
-                          </Label>
-                        </FormGroup>
-                      </>
-                    )}
-                  </CardBody>
+                    </Alert>
+                )}
+                <Progress value={(activeStep / 3) * 100} className="mb-4" color="primary">
+                    Step {activeStep} of 3
+                </Progress>
+                <Card className="border-0 shadow-sm mb-4 transition-hover">
+                    <CardBody>
+                        <Nav tabs className="mb-4">
+                            <NavItem>
+                                <NavLink active={activeStep === 1} className="cursor-pointer" onClick={() => setActiveStep(1)}>
+                                    1. Basic Information
+                                </NavLink>
+                            </NavItem>
+                            <NavItem>
+                                <NavLink active={activeStep === 2} className="cursor-pointer" onClick={() => setActiveStep(2)}>
+                                    2. Question Content
+                                </NavLink>
+                            </NavItem>
+                            <NavItem>
+                                <NavLink active={activeStep === 3} className="cursor-pointer" onClick={() => setActiveStep(3)}>
+                                    3. Review & Submit
+                                </NavLink>
+                            </NavItem>
+                        </Nav>
+                        <TabContent activeTab={activeStep.toString()}>
+                            <TabPane tabId="1">
+                                <CardTitle tag="h5" className="mb-3 d-flex align-items-center">
+                                    <BookOpen className="me-2 text-primary icon-md" />
+                                    Basic Information
+                                </CardTitle>
+                                <Row className="mb-3">
+                                    <Col md={compact ? 12 : 8}>
+                                        <FormGroup>
+                                            <Label for="title" className="fw-medium">Question Title *</Label>
+                                            <Input
+                                                type="text"
+                                                id="title"
+                                                name="title"
+                                                value={question.title || ''}
+                                                onChange={handleInputChange}
+                                                placeholder="e.g., JavaScript Variable Hoisting"
+                                                className="form-control-lg"
+                                                bsSize={compact ? 'sm' : undefined}
+                                            />
+                                        </FormGroup>
+                                    </Col>
+                                    <Col md={compact ? 12 : 4}>
+                                        <FormGroup>
+                                            <Label for="type" className="fw-medium">Question Type *</Label>
+                                            <Input
+                                                type="select"
+                                                id="type"
+                                                name="type"
+                                                value={question.type || ''}
+                                                onChange={(e) => handleTypeChange(e.target.value as Question['type'])}
+                                                className="form-control-lg"
+                                                bsSize={compact ? 'sm' : undefined}
+                                            >
+                                                <option value="">Select type</option>
+                                                <option value="trueFalse">True/False</option>
+                                                <option value="multipleChoice">Multiple Choice</option>
+                                                <option value="codeChallenge">Code Challenge</option>
+                                                <option value="codeDebugging">Code Debugging</option>
+                                            </Input>
+                                        </FormGroup>
+                                    </Col>
+                                </Row>
+                                <Row className="mb-3">
+                                    <Col md={compact ? 12 : 6}>
+                                        <FormGroup>
+                                            <Label for="language" className="fw-medium">Programming Language *</Label>
+                                            <Input
+                                                type="select"
+                                                id="language"
+                                                name="language"
+                                                value={question.language || ''}
+                                                onChange={handleInputChange}
+                                                className="form-control-lg"
+                                                bsSize={compact ? 'sm' : undefined}
+                                            >
+                                                <option value="">Select language</option>
+                                                {PROGRAMMING_LANGUAGES.map((lang) => (
+                                                    <option key={lang.value} value={lang.value}>
+                                                        {lang.label}
+                                                    </option>
+                                                ))}
+                                            </Input>
+                                        </FormGroup>
+                                    </Col>
+                                    <Col md={compact ? 12 : 3}>
+                                        <FormGroup>
+                                            <Label for="difficulty" className="fw-medium">Difficulty *</Label>
+                                            <Input
+                                                type="select"
+                                                id="difficulty"
+                                                name="difficulty"
+                                                value={question.difficulty || ''}
+                                                onChange={handleInputChange}
+                                                className="form-control-lg"
+                                                bsSize={compact ? 'sm' : undefined}
+                                            >
+                                                <option value="">Select difficulty</option>
+                                                <option value="easy">Easy</option>
+                                                <option value="medium">Medium</option>
+                                                <option value="hard">Hard</option>
+                                            </Input>
+                                        </FormGroup>
+                                    </Col>
+                                    <Col md={compact ? 12 : 3}>
+                                        <FormGroup>
+                                            <Label for="status" className="fw-medium">Status</Label>
+                                            <Input
+                                                type="select"
+                                                id="status"
+                                                name="status"
+                                                value={question.status || 'draft'}
+                                                onChange={handleInputChange}
+                                                className="form-control-lg"
+                                                bsSize={compact ? 'sm' : undefined}
+                                            >
+                                                <option value="draft">Draft</option>
+                                                <option value="active">Active</option>
+                                                <option value="archived">Archived</option>
+                                            </Input>
+                                        </FormGroup>
+                                    </Col>
+                                </Row>
+                                <FormGroup className="mb-3">
+                                    <Label className="fw-medium">Tags</Label>
+                                    <div className="mt-2">
+                                        {['Web Technologies', 'React', 'React Native', 'Flutter', 'Express', 'SQL', 'Python', 'General'].map((group) => (
+                                            <div key={group} className="mb-3">
+                                                <h6 className="mb-2">{group}</h6>
+                                                <div className="d-flex flex-wrap gap-2">
+                                                    {TAGS_OPTIONS.filter((tag) => tag.group === group).map((tag) => (
+                                                        <Badge
+                                                            key={tag.value}
+                                                            color={(question.tags || []).includes(tag.value) ? 'primary' : 'secondary'}
+                                                            className="cursor-pointer px-3 py-2"
+                                                            onClick={() => handleTagToggle(tag.value)}
+                                                            style={{ borderRadius: '12px', fontSize: '0.9rem' }}
+                                                        >
+                                                            {tag.label}
+                                                        </Badge>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <small className="text-muted">Click tags to select or deselect</small>
+                                </FormGroup>
+                            </TabPane>
+                            <TabPane tabId="2">
+                                <CardTitle tag="h5" className="mb-3 d-flex align-items-center">
+                                    <Code className="me-2 text-primary icon-md" />
+                                    Question Content
+                                </CardTitle>
+                                <FormGroup className="mb-3">
+                                    <Label for="description" className="fw-medium">Question Text *</Label>
+                                    <Input
+                                        type="textarea"
+                                        id="description"
+                                        name="description"
+                                        value={question.description || ''}
+                                        onChange={handleInputChange}
+                                        placeholder="Enter the question description..."
+                                        rows={compact ? 2 : 4}
+                                        className="form-control-lg"
+                                        bsSize={compact ? 'sm' : undefined}
+                                    />
+                                </FormGroup>
+                                {question.type === 'multipleChoice' && (
+                                    <>
+                                        <FormGroup className="mb-3">
+                                            <Label for="codeInput" className="fw-medium">Code Snippet (Optional)</Label>
+                                            <Editor
+                                                height={compact ? '200px' : '400px'}
+                                                language={getMonacoLanguage(question.language)}
+                                                value={question.options?.[0] || ''}
+                                                onChange={(value) => handleCodeChange(value, 'options')}
+                                                options={{
+                                                    fontSize: 14,
+                                                    fontFamily: 'monospace',
+                                                    minimap: { enabled: false },
+                                                    scrollBeyondLastLine: false,
+                                                    lineNumbers: 'on',
+                                                    roundedSelection: false,
+                                                    padding: { top: 10 },
+                                                    automaticLayout: true,
+                                                }}
+                                                className="border rounded"
+                                            />
+                                            <small className="text-muted mt-2">Optionally provide code that the question refers to</small>
+                                        </FormGroup>
+                                        {(question.options || []).slice(1).map((option, index) => (
+                                            <div key={index} className="mb-3 p-3 bg-light rounded">
+                                                <div className="d-flex align-items-center mb-2">
+                                                    <Input
+                                                        type="radio"
+                                                        name="correctAnswer"
+                                                        value={index + 1}
+                                                        checked={question.correctAnswer === index + 1}
+                                                        onChange={() => updateQuestion('correctAnswer', index + 1)}
+                                                        className="me-2"
+                                                    />
+                                                    <Label className="mb-0 me-2 fw-medium">
+                                                        Option {String.fromCharCode(65 + index)}
+                                                    </Label>
+                                                    {(question.options || []).slice(1).length > 2 && (
+                                                        <Button
+                                                            type="button"
+                                                            color="outline-danger"
+                                                            size="sm"
+                                                            onClick={() => removeOption(index + 1)}
+                                                            className="ms-auto d-flex align-items-center"
+                                                        >
+                                                            <Trash2 className="icon-xs" />
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                                <Input
+                                                    type="text"
+                                                    value={option}
+                                                    onChange={(e) => {
+                                                        const newOptions = [...(question.options || [''])];
+                                                        newOptions[index + 1] = e.target.value;
+                                                        updateQuestion('options', newOptions);
+                                                    }}
+                                                    placeholder={`Enter option ${String.fromCharCode(65 + index)}`}
+                                                    className="ms-4 form-control-lg"
+                                                    bsSize={compact ? 'sm' : undefined}
+                                                />
+                                            </div>
+                                        ))}
+                                        <Button
+                                            type="button"
+                                            color="success"
+                                            size="sm"
+                                            onClick={addOption}
+                                            className="d-flex align-items-center"
+                                        >
+                                            <Plus className="me-2 icon-xs" />
+                                            Add Option
+                                        </Button>
+                                    </>
+                                )}
+                                {question.type === 'trueFalse' && (
+                                    <div className="d-flex gap-3">
+                                        <Button
+                                            type="button"
+                                            color={question.correctAnswer === true ? 'success' : 'outline-success'}
+                                            onClick={() => updateQuestion('correctAnswer', true)}
+                                            size="lg"
+                                            className="px-4 d-flex align-items-center"
+                                        >
+                                            <CheckCircle className="me-2 icon-sm" />
+                                            True
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            color={question.correctAnswer === false ? 'danger' : 'outline-danger'}
+                                            onClick={() => updateQuestion('correctAnswer', false)}
+                                            size="lg"
+                                            className="px-4 d-flex align-items-center"
+                                        >
+                                            <X className="me-2 icon-sm" />
+                                            False
+                                        </Button>
+                                    </div>
+                                )}
+                                {['codeChallenge', 'codeDebugging'].includes(question.type || '') && (
+                                    <>
+                                        <FormGroup className="mb-3">
+                                            <Label for="codeInput" className="fw-medium">
+                                                {question.type === 'codeDebugging' ? 'Broken Code *' : 'Starter Code (Optional)'}
+                                            </Label>
+                                            <Editor
+                                                height={compact ? '200px' : '400px'}
+                                                language={getMonacoLanguage(question.language)}
+                                                value={question.options?.[0] || ''}
+                                                onChange={(value) => handleCodeChange(value, 'options')}
+                                                options={{
+                                                    fontSize: 14,
+                                                    fontFamily: 'monospace',
+                                                    minimap: { enabled: false },
+                                                    scrollBeyondLastLine: false,
+                                                    lineNumbers: 'on',
+                                                    roundedSelection: false,
+                                                    padding: { top: 10 },
+                                                    automaticLayout: true,
+                                                }}
+                                                className="border rounded"
+                                            />
+                                            <small className="text-muted mt-2">
+                                                {question.type === 'codeDebugging'
+                                                    ? 'Provide code with intentional bugs for students to fix'
+                                                    : 'Provide a starting point for students to build upon'}
+                                            </small>
+                                        </FormGroup>
+                                        <div className="d-flex justify-content-between align-items-center mb-3">
+                                            <h6 className="mb-0">Test Cases *</h6>
+                                            <Button
+                                                type="button"
+                                                color="success"
+                                                size="sm"
+                                                onClick={addTestCase}
+                                                className="d-flex align-items-center"
+                                            >
+                                                <Plus className="me-2 icon-xs" />
+                                                Add Test Case
+                                            </Button>
+                                        </div>
+                                        {(question.testCases || []).length === 0 && (
+                                            <div className="text-center py-4 text-muted">
+                                                <Code className="mb-2 icon-lg" />
+                                                <p>No test cases added yet. Click "Add Test Case" to get started.</p>
+                                            </div>
+                                        )}
+                                        {(question.testCases || []).map((testCase, index) => (
+                                            <Card key={index} className="mb-3 bg-light border-0">
+                                                <CardBody>
+                                                    <div className="d-flex justify-content-between align-items-center mb-3">
+                                                        <h6 className="mb-0">Test Case {index + 1}</h6>
+                                                        <Button
+                                                            type="button"
+                                                            color="outline-danger"
+                                                            size="sm"
+                                                            onClick={() => removeTestCase(index)}
+                                                            className="d-flex align-items-center"
+                                                        >
+                                                            <Trash2 className="icon-xs" />
+                                                        </Button>
+                                                    </div>
+                                                    <Row>
+                                                        <Col md={compact ? 12 : 6}>
+                                                            <FormGroup>
+                                                                <Label className="fw-medium">Input</Label>
+                                                                <Input
+                                                                    type="text"
+                                                                    name={`testCase.${index}.input`}
+                                                                    value={testCase.input || ''}
+                                                                    onChange={handleInputChange}
+                                                                    placeholder="e.g., filterArray([1,2,3], x => x > 2)"
+                                                                    style={{ fontFamily: 'monospace', fontSize: '13px' }}
+                                                                    className="form-control-lg"
+                                                                    bsSize={compact ? 'sm' : undefined}
+                                                                />
+                                                            </FormGroup>
+                                                        </Col>
+                                                        <Col md={compact ? 12 : 6}>
+                                                            <FormGroup>
+                                                                <Label className="fw-medium">Expected Output</Label>
+                                                                <Input
+                                                                    type="text"
+                                                                    name={`testCase.${index}.output`}
+                                                                    value={testCase.output || ''}
+                                                                    onChange={handleInputChange}
+                                                                    placeholder="e.g., [3]"
+                                                                    style={{ fontFamily: 'monospace', fontSize: '13px' }}
+                                                                    className="form-control-lg"
+                                                                    bsSize={compact ? 'sm' : undefined}
+                                                                />
+                                                            </FormGroup>
+                                                        </Col>
+                                                    </Row>
+                                                    <div className="form-check">
+                                                        <Input
+                                                            type="checkbox"
+                                                            name={`testCase.${index}.hidden`}
+                                                            checked={testCase.hidden}
+                                                            onChange={handleCheckboxChange}
+                                                            className="form-check-input"
+                                                            id={`testCase.${index}.hidden`}
+                                                        />
+                                                        <Label for={`testCase.${index}.hidden`} className="form-check-label">
+                                                            Hidden from student
+                                                        </Label>
+                                                    </div>
+                                                </CardBody>
+                                            </Card>
+                                        ))}
+                                    </>
+                                )}
+                            </TabPane>
+                            <TabPane tabId="3">
+                                <CardTitle tag="h5" className="mb-3 d-flex align-items-center">
+                                    <CheckCircle className="me-2 text-primary icon-md" />
+                                    Review & Submit
+                                </CardTitle>
+                                {renderSummary()}
+                            </TabPane>
+                        </TabContent>
+                        <div className="d-flex justify-content-between pt-3">
+                            <Button
+                                color="secondary"
+                                onClick={handlePrevious}
+                                disabled={activeStep === 1 || isSubmitting}
+                                className="d-flex align-items-center px-4"
+                            >
+                                <ChevronLeft className="me-2 icon-sm" />
+                                Previous
+                            </Button>
+                            {activeStep < 3 ? (
+                                <Button
+                                    color="primary"
+                                    onClick={handleNext}
+                                    disabled={isSubmitting}
+                                    className="d-flex align-items-center px-4"
+                                >
+                                    Next
+                                    <ChevronRight className="ms-2 icon-sm" />
+                                </Button>
+                            ) : (
+                                <Button
+                                    type="submit"
+                                    color="primary"
+                                    onClick={handleSubmit}
+                                    disabled={isSubmitting || !user?.id}
+                                    className="d-flex align-items-center px-4"
+                                >
+                                    {isSubmitting ? (
+                                        <>
+                                            <span className="me-2">Saving...</span>
+                                            <div
+                                                className="spinner-border spinner-border-sm"
+                                                role="status"
+                                                style={{ width: '16px', height: '16px' }}
+                                            />
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Save className="me-2 icon-sm" />
+                                            {submitLabel}
+                                        </>
+                                    )}
+                                </Button>
+                            )}
+                        </div>
+                        {showSubmitButton && onCancel && (
+                            <Button
+                                type="button"
+                                color="secondary"
+                                onClick={onCancel}
+                                disabled={isSubmitting}
+                                className="d-flex align-items-center px-4 mt-2"
+                            >
+                                <X className="me-2 icon-sm" />
+                                Cancel
+                            </Button>
+                        )}
+                    </CardBody>
                 </Card>
-              ))}
-              <Button
-                type="button"
-                color="success"
-                size="sm"
-                onClick={addTestCase}
-              >
-                + Add Test Case
-              </Button>
-            </CardBody>
-          </Card>
-        </Collapse>
-
-        {/* Additional Settings */}
-        {!compact && (
-          <Card className="mb-3 border-0 shadow-sm">
-            <CardBody>
-              <CardTitle tag="h3" className="h5 mb-3 font-weight-bold">
-                Additional Settings
-              </CardTitle>
-              <Row>
-                <Col md="4">
-                  <FormGroup>
-                    <Label for="category">Category</Label>
-                    <Input
-                      type="text"
-                      id="category"
-                      name="category"
-                      value={question.category}
-                      onChange={handleInputChange}
-                      placeholder="e.g., variables, routing"
-                    />
-                  </FormGroup>
-                </Col>
-                <Col md="4">
-                  <FormGroup>
-                    <Label for="timeEstimate">Time Estimate (seconds)</Label>
-                    <Input
-                      type="number"
-                      id="timeEstimate"
-                      name="timeEstimate"
-                      value={question.timeEstimate}
-                      onChange={handleInputChange}
-                      placeholder="e.g., 60"
-                      min={15}
-                    />
-                  </FormGroup>
-                </Col>
-                <Col md="4">
-                  <FormGroup>
-                    <Label for="weight">Weight</Label>
-                    <Input
-                      type="number"
-                      id="weight"
-                      name="weight"
-                      value={question.weight}
-                      onChange={handleInputChange}
-                      step="0.1"
-                      min="0.1"
-                      max="3.0"
-                    />
-                  </FormGroup>
-                </Col>
-              </Row>
-              <FormGroup>
-                <Label for="content.explanation">Explanation (Optional)</Label>
-                <Input
-                  type="textarea"
-                  id="content.explanation"
-                  name="content.explanation"
-                  value={question.content.explanation || ""}
-                  onChange={handleInputChange}
-                  placeholder="Explain why the answer is correct..."
-                  rows={4}
-                />
-                <div className="text-muted mt-1" style={{ fontSize: "12px" }}>
-                  This explanation will be shown to students after they answer
-                </div>
-              </FormGroup>
-              <FormGroup>
-                <Label for="content.hints">Hints (Optional, one per line)</Label>
-                <Input
-                  type="textarea"
-                  id="content.hints"
-                  name="content.hints"
-                  value={question.content.hints?.join("\n") || ""}
-                  onChange={handleInputChange}
-                  placeholder="Enter hints, one per line"
-                  rows={4}
-                />
-                <div className="text-muted mt-1" style={{ fontSize: "12px" }}>
-                  Progressive hints for students
-                </div>
-              </FormGroup>
-              <FormGroup>
-                <Label for="tags">Tags (comma-separated)</Label>
-                <Input
-                  type="text"
-                  id="tags"
-                  name="tags"
-                  value={question.tags.join(", ")}
-                  onChange={handleInputChange}
-                  placeholder="e.g., routing, express"
-                />
-              </FormGroup>
-            </CardBody>
-          </Card>
-        )}
-
-        {compact && (
-          <>
-            <FormGroup className="mb-2">
-              <Label for="content.explanation">Explanation (Optional)</Label>
-              <Input
-                type="textarea"
-                id="content.explanation"
-                name="content.explanation"
-                value={question.content.explanation || ""}
-                onChange={handleInputChange}
-                placeholder="Explain the correct answer"
-                rows={2}
-                bsSize="sm"
-              />
-            </FormGroup>
-            <FormGroup className="mb-2">
-              <Label for="tags">Tags</Label>
-              <Input
-                type="text"
-                id="tags"
-                name="tags"
-                value={question.tags.join(", ")}
-                onChange={handleInputChange}
-                placeholder="e.g., routing, express"
-                bsSize="sm"
-              />
-            </FormGroup>
-          </>
-        )}
-
-        {/* Submit Button */}
-        {showSubmitButton && (
-          <div className="d-flex justify-content-end gap-2 pt-3 border-top">
-            <Button
-              type="submit"
-              color="primary"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? "Saving..." : submitLabel}
-            </Button>
-            {onCancel && (
-              <Button
-                type="button"
-                color="secondary"
-                onClick={onCancel}
-                disabled={isSubmitting}
-              >
-                Cancel
-              </Button>
-            )}
-          </div>
-        )}
-      </Form>
-    </div>
-  );
+            </Container>
+            <style>{`
+        .transition-hover {
+          transition: all 0.2s ease-in-out;
+        }
+        .transition-hover:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+        }
+        .icon-xs {
+          width: 12px;
+          height: 12px;
+        }
+        .icon-sm {
+          width: 16px;
+          height: 16px;
+        }
+        .icon-md {
+          width: 20px;
+          height: 20px;
+        }
+        .icon-lg {
+          width: 24px;
+          height: 24px;
+        }
+        .monaco-editor {
+          border: 1px solid #ced4da;
+          border-radius: 4px;
+        }
+        .cursor-pointer {
+          cursor: pointer;
+        }
+        .nav-tabs .nav-link {
+          color: #495057;
+          font-weight: 500;
+        }
+        .nav-tabs .nav-link.active {
+          color: #007bff;
+          border-color: #007bff;
+        }
+      `}</style>
+        </div>
+    );
 };
 
 export default QuestionFormComponent;
