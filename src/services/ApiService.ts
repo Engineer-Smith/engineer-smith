@@ -272,21 +272,21 @@ class ApiService {
   }
 
   async getPaginatedQuestions(params: Params = {}): Promise<ApiResponse<{
-  questions: Question[];
-  totalCount: number;
-  totalPages: number;
-}>> {
-  try {
-    console.log('ApiService: Fetching paginated questions with params:', params);
-    return await this.getAllQuestions(params, true) as ApiResponse<{
-      questions: Question[];
-      totalCount: number;
-      totalPages: number;
-    }>;
-  } catch (error) {
-    return this.handleError(error);
+    questions: Question[];
+    totalCount: number;
+    totalPages: number;
+  }>> {
+    try {
+      console.log('ApiService: Fetching paginated questions with params:', params);
+      return await this.getAllQuestions(params, true) as ApiResponse<{
+        questions: Question[];
+        totalCount: number;
+        totalPages: number;
+      }>;
+    } catch (error) {
+      return this.handleError(error);
+    }
   }
-}
 
   async updateQuestion(questionId: string, data: Partial<Question>): Promise<ApiResponse<Question>> {
     try {
@@ -504,6 +504,17 @@ class ApiService {
       return this.handleError(error);
     }
   }
+
+  async getTestWithQuestions(testId: string): Promise<ApiResponse<Test>> {
+  try {
+    console.log('ApiService: Fetching test with questions:', testId);
+    const response = await this.client.get(`/api/tests/${testId}/with-questions`);
+    console.log('ApiService: getTestWithQuestions response:', response.data);
+    return { data: response.data };
+  } catch (error) {
+    return this.handleError(error);
+  }
+}
 
   async getQuestionStats(): Promise<ApiResponse<{
     byLanguage: Array<{

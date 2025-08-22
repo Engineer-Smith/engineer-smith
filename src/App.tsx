@@ -16,6 +16,16 @@ import QuestionFormComponent from './components/QuestionFormComponent';
 import TestManagementPage from './pages/TestManagementPage';
 import CreateTestPage from './pages/CreateTestPage';
 
+// ✅ NEW: Import test-related components
+import TestPreviewPage from './pages/TestPreviewPage';
+// import EditTestPage from './pages/EditTestPage'; // You'll need to create this
+// import ViewTestPage from './pages/ViewTestPage';   // You'll need to create this
+
+// ✅ NEW: Import student test flow components
+import TestDetailsPage from './pages/TestDetailsPage';
+import TestSessionPage from './pages/TestSessionPage';
+// import TestResultsPage from './pages/TestResultsPage'; // You'll need to create this
+
 // Placeholder components for missing pages
 const PlaceholderPage = ({ title }: { title: string }) => (
   <div style={{ minHeight: '100vh', backgroundColor: '#f8f9fa' }}>
@@ -84,6 +94,31 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
+// Student Route component - only allows students
+const StudentRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user, isAuthenticated, loading } = useAuth();
+  
+  if (loading) {
+    return (
+      <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
+        <div className="spinner-border text-primary" role="status">
+          <span className="visually-hidden">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+  
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  if (user?.role !== 'student') {
+    return <Navigate to="/dashboard" replace />;
+  }
+  
+  return <>{children}</>;
+};
+
 // SSO Callback component
 const SSOCallback = () => {
   const navigate = useNavigate();
@@ -134,6 +169,32 @@ function AppRoutes() {
             <ProtectedRoute>
               <Dashboard />
             </ProtectedRoute>
+          } 
+        />
+        
+        {/* ✅ NEW: Student Test Flow Routes */}
+        <Route 
+          path="/test-details/:testId" 
+          element={
+            <StudentRoute>
+              <TestDetailsPage />
+            </StudentRoute>
+          } 
+        />
+        <Route 
+          path="/test-session/:sessionId" 
+          element={
+            <StudentRoute>
+              <TestSessionPage />
+            </StudentRoute>
+          } 
+        />
+        <Route 
+          path="/test-results/:sessionId" 
+          element={
+            <StudentRoute>
+              <PlaceholderPage title="Test Results" />
+            </StudentRoute>
           } 
         />
         
@@ -216,7 +277,7 @@ function AppRoutes() {
           } 
         />
         
-        {/* Test Management Routes */}
+        {/* ✅ UPDATED: Test Management Routes */}
         <Route 
           path="/admin/tests" 
           element={
@@ -233,6 +294,33 @@ function AppRoutes() {
             </AdminRoute>
           } 
         />
+        {/* ✅ NEW: Test-specific routes - ORDER MATTERS! Put specific routes first */}
+        <Route 
+          path="/admin/tests/preview/:testId" 
+          element={
+            <AdminRoute>
+              <TestPreviewPage />
+            </AdminRoute>
+          } 
+        />
+        <Route 
+          path="/admin/tests/edit/:testId" 
+          element={
+            <AdminRoute>
+              <PlaceholderPage title="Edit Test" />
+            </AdminRoute>
+          } 
+        />
+        <Route 
+          path="/admin/tests/view/:testId" 
+          element={
+            <AdminRoute>
+              <PlaceholderPage title="View Test Details" />
+            </AdminRoute>
+          } 
+        />
+        
+        {/* Other Admin Routes */}
         <Route 
           path="/admin/test-sessions" 
           element={

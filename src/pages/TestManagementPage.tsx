@@ -43,7 +43,8 @@ import {
   Globe,
   Building,
   FileText,
-  Settings
+  Settings,
+  PlayCircle
 } from 'lucide-react';
 import type { Test, TestStatus } from '../types';
 
@@ -51,7 +52,7 @@ const TestManagementPage: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  
+
   const [tests, setTests] = useState<Test[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +61,7 @@ const TestManagementPage: React.FC = () => {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [isGlobalFilter, setIsGlobalFilter] = useState<string>('all');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  
+  console.log(tests)
   // Delete modal state
   const [deleteModal, setDeleteModal] = useState(false);
   const [testToDelete, setTestToDelete] = useState<{ id: string; title: string } | null>(null);
@@ -72,10 +73,10 @@ const TestManagementPage: React.FC = () => {
       setSuccessMessage(location.state.message);
       // Clear the message after 5 seconds
       const timer = setTimeout(() => setSuccessMessage(null), 5000);
-      
+
       // Clear the location state to prevent message from showing again on refresh
       window.history.replaceState({}, document.title);
-      
+
       return () => clearTimeout(timer);
     }
   }, [location.state]);
@@ -124,8 +125,8 @@ const TestManagementPage: React.FC = () => {
   // Filter tests based on search term and filters
   const filteredTests = tests.filter(test => {
     const matchesSearch = test.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         test.description.toLowerCase().includes(searchTerm.toLowerCase());
-    
+      test.description.toLowerCase().includes(searchTerm.toLowerCase());
+
     return matchesSearch;
   });
 
@@ -146,20 +147,24 @@ const TestManagementPage: React.FC = () => {
     setDeleteModal(true);
   };
 
+  const handlePreviewTest = (testId: string) => {
+    navigate(`/admin/tests/preview/${testId}`);
+  };
+
   const confirmDelete = async () => {
     if (!testToDelete) return;
-    
+
     try {
       setDeleting(true);
       const response = await apiService.deleteTest(testToDelete.id);
       if (response.error) {
         throw new Error(response.message || 'Failed to delete test');
       }
-      
+
       // Close modal and reset state
       setDeleteModal(false);
       setTestToDelete(null);
-      
+
       // Refresh the list
       fetchTests();
     } catch (error: any) {
@@ -180,7 +185,7 @@ const TestManagementPage: React.FC = () => {
       if (response.error) {
         throw new Error(response.message || 'Failed to update test status');
       }
-      
+
       // Refresh the list
       fetchTests();
     } catch (error: any) {
@@ -232,7 +237,7 @@ const TestManagementPage: React.FC = () => {
                   <div>
                     <h1 className="h4 mb-0">Test Management</h1>
                     <p className="text-muted mb-0 small">
-                      {user?.organization?.isSuperOrg 
+                      {user?.organization?.isSuperOrg
                         ? "Manage global and organization-specific tests"
                         : `Manage tests for ${user?.organization?.name}`
                       }
@@ -248,8 +253,8 @@ const TestManagementPage: React.FC = () => {
                       Super Admin Access
                     </Badge>
                   )}
-                  <Button 
-                    color="success" 
+                  <Button
+                    color="success"
                     onClick={handleCreateTest}
                     className="d-flex align-items-center"
                   >
@@ -266,8 +271,8 @@ const TestManagementPage: React.FC = () => {
       <Container className="py-4">
         {/* Success Message */}
         {successMessage && (
-          <Alert 
-            color="success" 
+          <Alert
+            color="success"
             className="mb-4 d-flex align-items-center"
             dismissible
             onDismiss={() => setSuccessMessage(null)}
@@ -356,7 +361,7 @@ const TestManagementPage: React.FC = () => {
                   />
                 </InputGroup>
               </Col>
-              
+
               <Col md={2}>
                 <Input
                   type="select"
@@ -383,7 +388,7 @@ const TestManagementPage: React.FC = () => {
                   </Input>
                 </Col>
               )}
-              
+
               <Col md={user?.organization?.isSuperOrg ? 4 : 6}>
                 <div className="text-muted small d-flex align-items-center">
                   <Filter className="me-2 icon-sm" />
@@ -420,7 +425,7 @@ const TestManagementPage: React.FC = () => {
         {!loading && (
           <Row className="g-3">
             {filteredTests.map((test) => (
-              <Col key={test.id} lg={6} xl={4}>
+              <Col key={test._id} lg={6} xl={4}>
                 <Card className="h-100 border-0 shadow-sm">
                   <CardBody className="d-flex flex-column">
                     {/* Header */}
@@ -439,22 +444,29 @@ const TestManagementPage: React.FC = () => {
                       </div>
                       <ButtonGroup size="sm">
                         <Button
+                          color="outline-success"
+                          onClick={() => handlePreviewTest(test._id)}
+                          title="Preview Test"
+                        >
+                          <PlayCircle className="icon-xs" />
+                        </Button>
+                        <Button
                           color="outline-primary"
-                          onClick={() => handleViewTest(test.id)}
-                          title="View Test"
+                          onClick={() => handleViewTest(test._id)}
+                          title="View Test Details"
                         >
                           <Eye className="icon-xs" />
                         </Button>
                         <Button
                           color="outline-secondary"
-                          onClick={() => handleEditTest(test.id)}
+                          onClick={() => handleEditTest(test._id)}
                           title="Edit Test"
                         >
                           <Edit className="icon-xs" />
                         </Button>
                         <Button
                           color="outline-danger"
-                          onClick={() => handleDeleteTest(test.id, test.title)}
+                          onClick={() => handleDeleteTest(test._id, test.title)}
                           title="Delete Test"
                         >
                           <Trash2 className="icon-xs" />
@@ -467,9 +479,9 @@ const TestManagementPage: React.FC = () => {
                       <CardTitle tag="h6" className="mb-2">
                         {test.title}
                       </CardTitle>
-                      
+
                       <CardText className="text-muted small mb-3">
-                        {test.description.length > 100 
+                        {test.description.length > 100
                           ? test.description.substring(0, 100) + '...'
                           : test.description
                         }
@@ -490,7 +502,7 @@ const TestManagementPage: React.FC = () => {
                             Questions
                           </small>
                           <small className="fw-medium">
-                            {test.settings?.useSections 
+                            {test.settings?.useSections
                               ? test.sections?.reduce((sum, section) => sum + (section.questions?.length || 0), 0) || 0
                               : test.questions?.length || 0
                             }
@@ -512,24 +524,24 @@ const TestManagementPage: React.FC = () => {
                         <small className="text-muted">
                           Created {new Date(test.createdAt).toLocaleDateString()}
                         </small>
-                        
+
                         {test.status === 'draft' && (
                           <Button
                             color="success"
                             size="sm"
-                            onClick={() => handleStatusChange(test.id, 'active' as TestStatus)}
+                            onClick={() => handleStatusChange(test._id, 'active' as TestStatus)}
                             className="d-flex align-items-center"
                           >
                             <Play className="me-1 icon-xs" />
                             Publish
                           </Button>
                         )}
-                        
+
                         {test.status === 'active' && (
                           <Button
                             color="warning"
                             size="sm"
-                            onClick={() => handleStatusChange(test.id, 'archived' as TestStatus)}
+                            onClick={() => handleStatusChange(test._id, 'archived' as TestStatus)}
                             className="d-flex align-items-center"
                           >
                             <Archive className="me-1 icon-xs" />
@@ -570,7 +582,7 @@ const TestManagementPage: React.FC = () => {
           <CardBody>
             <h5 className="mb-3">Quick Actions</h5>
             <div className="d-flex flex-wrap gap-2">
-              <Button 
+              <Button
                 color="success"
                 size="sm"
                 onClick={handleCreateTest}
@@ -579,7 +591,7 @@ const TestManagementPage: React.FC = () => {
                 <Plus className="me-2 icon-sm" />
                 Create Test
               </Button>
-              <Button 
+              <Button
                 color="primary"
                 size="sm"
                 onClick={() => navigate('/admin/test-sessions')}
@@ -588,7 +600,7 @@ const TestManagementPage: React.FC = () => {
                 <Users className="me-2 icon-sm" />
                 View Sessions
               </Button>
-              <Button 
+              <Button
                 color="info"
                 size="sm"
                 onClick={() => navigate('/admin/analytics')}
@@ -629,15 +641,15 @@ const TestManagementPage: React.FC = () => {
           </div>
         </ModalBody>
         <ModalFooter className="border-0 pt-0">
-          <Button 
-            color="secondary" 
+          <Button
+            color="secondary"
             onClick={cancelDelete}
             disabled={deleting}
           >
             Cancel
           </Button>
-          <Button 
-            color="danger" 
+          <Button
+            color="danger"
             onClick={confirmDelete}
             disabled={deleting}
             className="d-flex align-items-center"

@@ -167,7 +167,7 @@ export interface TestSection {
 
 // --- Test (matches backend Test.js model exactly) ---
 export interface Test {
-  id: string;
+  _id: string;
   title: string; // Required
   description: string; // Required
   testType: TestType; // Enum, default 'custom'

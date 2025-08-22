@@ -23,14 +23,15 @@ import {
   CheckCircle,
   X,
   Building,
-  Users,
-  Eye,
-  EyeOff
+  Info,
+  Eye
 } from 'lucide-react';
 
 // Import types
 import type { WizardStepProps, TestTemplate } from '../../types/createTest';
 import type { Language, Tags, TestType, TestStatus } from '../../types';
+import { getTestScopeText, canCreateGlobalTests } from '../../types/createTest';
+import { useAuth } from '../../context/AuthContext';
 
 // Interface for language options
 interface LanguageOption {
@@ -60,8 +61,13 @@ const TestBasics: React.FC<WizardStepProps> = ({
   onCancel,
   setError
 }) => {
+  const { user } = useAuth();
   const [selectedTemplate, setSelectedTemplate] = useState<TestType | null>(null);
   const [showCustomSelection, setShowCustomSelection] = useState<boolean>(false);
+
+  // Determine test scope based on user's organization
+  const isGlobalTest = canCreateGlobalTests(user?.organization);
+  const testScopeText = getTestScopeText(user?.organization);
 
   const TEST_TEMPLATES: TestTemplate[] = [
     {
@@ -301,10 +307,6 @@ const TestBasics: React.FC<WizardStepProps> = ({
     setTestData({ ...testData, description: e.target.value });
   };
 
-  const handleVisibilityChange = (isGlobal: boolean): void => {
-    setTestData({ ...testData, isGlobal });
-  };
-
   const handleStatusChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
     setTestData({ ...testData, status: e.target.value as TestStatus });
   };
@@ -345,7 +347,7 @@ const TestBasics: React.FC<WizardStepProps> = ({
           </h6>
           
           <Row>
-            <Col md={8}>
+            <Col md={12}>
               <FormGroup>
                 <Label htmlFor="testTitle" className="fw-bold">
                   Test Title <span className="text-danger">*</span>
@@ -357,37 +359,6 @@ const TestBasics: React.FC<WizardStepProps> = ({
                   onChange={handleTitleChange}
                   placeholder="e.g., Frontend Developer Assessment"
                 />
-              </FormGroup>
-            </Col>
-            <Col md={4}>
-              <FormGroup>
-                <Label htmlFor="testVisibility" className="fw-bold">
-                  Test Visibility
-                </Label>
-                <ButtonGroup className="d-flex">
-                  <Button
-                    color={testData.isGlobal ? "outline-primary" : "primary"}
-                    onClick={() => handleVisibilityChange(false)}
-                    className="d-flex align-items-center justify-content-center"
-                  >
-                    <Building size={14} className="me-1" />
-                    Organization
-                  </Button>
-                  <Button
-                    color={testData.isGlobal ? "primary" : "outline-primary"}
-                    onClick={() => handleVisibilityChange(true)}
-                    className="d-flex align-items-center justify-content-center"
-                  >
-                    <Globe size={14} className="me-1" />
-                    Global
-                  </Button>
-                </ButtonGroup>
-                <small className="text-muted">
-                  {testData.isGlobal 
-                    ? 'Available to all organizations' 
-                    : 'Only visible to your organization'
-                  }
-                </small>
               </FormGroup>
             </Col>
           </Row>
@@ -431,6 +402,31 @@ const TestBasics: React.FC<WizardStepProps> = ({
               </FormGroup>
             </Col>
           </Row>
+
+          {/* Auto Test Scope Display */}
+          <Alert color={isGlobalTest ? "info" : "light"} className="mb-0">
+            <div className="d-flex align-items-center">
+              {isGlobalTest ? (
+                <Globe size={20} className="me-2 text-info" />
+              ) : (
+                <Building size={20} className="me-2 text-muted" />
+              )}
+              <div>
+                <strong>Test Scope: {testScopeText}</strong>
+                <div className="small text-muted mt-1">
+                  {isGlobalTest ? (
+                    <>
+                      As a member of {user?.organization?.name}, your tests are automatically made available to all organizations and students globally.
+                    </>
+                  ) : (
+                    <>
+                      This test will only be available to members of {user?.organization?.name}.
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          </Alert>
         </CardBody>
       </Card>
 
@@ -684,9 +680,9 @@ const TestBasics: React.FC<WizardStepProps> = ({
               </Col>
               <Col md={6}>
                 <div className="mb-2">
-                  <strong>Visibility:</strong> 
-                  <Badge color={testData.isGlobal ? "primary" : "secondary"} className="ms-2">
-                    {testData.isGlobal ? "Global" : "Organization"}
+                  <strong>Scope:</strong> 
+                  <Badge color={isGlobalTest ? "info" : "secondary"} className="ms-2">
+                    {isGlobalTest ? "Global" : "Organization"}
                   </Badge>
                 </div>
                 <div className="mb-2">

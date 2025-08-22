@@ -16,7 +16,7 @@ import {
 } from 'reactstrap';
 import { ArrowLeft, ArrowRight, Target, AlertCircle } from 'lucide-react';
 import apiService from '../../services/ApiService';
-import type { WizardStepProps, CreateTestData } from '../../types/createTest';
+import type { WizardStepProps, CreateTestData, TestQuestion } from '../../types/createTest';
 import type { Question, QuestionType, Difficulty, Language, Tags } from '../../types';
 import QuestionBrowser from './QuestionBrowser';
 import QuestionCreator from './QuestionCreator';
@@ -107,6 +107,7 @@ const QuestionAssignment: React.FC<WizardStepProps> = ({
             setLoading(false);
         }
     };
+
     const setTestDataCompat: React.Dispatch<React.SetStateAction<CreateTestData>> = (next) => {
         if (typeof next === 'function') {
             const compute = next as (prev: CreateTestData) => CreateTestData;
@@ -134,6 +135,119 @@ const QuestionAssignment: React.FC<WizardStepProps> = ({
             return inTitle || inDesc || inTags;
         });
     }, [questions, searchTerm, filterType, filterDifficulty, filterLanguage, filterTag]);
+
+    // Question selection handlers
+    const handleToggleQuestion = (questionId: string) => {
+        const question = questions.find(q => q.id === questionId);
+        if (!question) return;
+
+        if (testData.settings.useSections) {
+            const updatedSections = [...testData.sections];
+            const section = updatedSections[selectedSectionIndex];
+            
+            if (!section) return;
+
+            const isSelected = section.questions.some(q => q.questionId === questionId);
+            
+            if (isSelected) {
+                // Remove question
+                section.questions = section.questions.filter(q => q.questionId !== questionId);
+            } else {
+                // Add question with default points
+                section.questions.push({
+                    questionId: questionId,
+                    points: 10 // Default points
+                });
+            }
+
+            setTestData({
+                ...testData,
+                sections: updatedSections
+            });
+        } else {
+            const isSelected = testData.questions.some(q => q.questionId === questionId);
+            
+            if (isSelected) {
+                // Remove question
+                setTestData({
+                    ...testData,
+                    questions: testData.questions.filter(q => q.questionId !== questionId)
+                });
+            } else {
+                // Add question with default points
+                setTestData({
+                    ...testData,
+                    questions: [...testData.questions, {
+                        questionId: questionId,
+                        points: 10 // Default points
+                    }]
+                });
+            }
+        }
+    };
+
+    const handleSelectAllVisible = () => {
+        if (testData.settings.useSections) {
+            const updatedSections = [...testData.sections];
+            const section = updatedSections[selectedSectionIndex];
+            
+            if (!section) return;
+
+            // Add all visible questions that aren't already selected
+            filteredQuestions.forEach(question => {
+                const isAlreadySelected = section.questions.some(q => q.questionId === question.id);
+                if (!isAlreadySelected) {
+                    section.questions.push({
+                        questionId: question.id,
+                        points: 10 // Default points
+                    });
+                }
+            });
+
+            setTestData({
+                ...testData,
+                sections: updatedSections
+            });
+        } else {
+            const newQuestions: TestQuestion[] = [];
+            
+            filteredQuestions.forEach(question => {
+                const isAlreadySelected = testData.questions.some(q => q.questionId === question.id);
+                if (!isAlreadySelected) {
+                    newQuestions.push({
+                        questionId: question.id,
+                        points: 10 // Default points
+                    });
+                }
+            });
+
+            if (newQuestions.length > 0) {
+                setTestData({
+                    ...testData,
+                    questions: [...testData.questions, ...newQuestions]
+                });
+            }
+        }
+    };
+
+    const handleClearSelection = () => {
+        if (testData.settings.useSections) {
+            const updatedSections = [...testData.sections];
+            if (updatedSections[selectedSectionIndex]) {
+                updatedSections[selectedSectionIndex].questions = [];
+            }
+
+            setTestData({
+                ...testData,
+                sections: updatedSections
+            });
+        } else {
+            setTestData({
+                ...testData,
+                questions: []
+            });
+        }
+    };
 
     const getTotalQuestions = () => {
         if (testData.settings.useSections) {
@@ -303,7 +417,9 @@ const QuestionAssignment: React.FC<WizardStepProps> = ({
                         filterTag={filterTag}
                         setFilterTag={setFilterTag}
                         setSelectedSectionIndex={setSelectedSectionIndex}
-                    /* no setTestData prop here */
+                        onToggleQuestion={handleToggleQuestion}
+                        onAssignAll={handleSelectAllVisible}
+                        onClear={handleClearSelection}
                     />
                 </TabPane>
 
