@@ -24,6 +24,7 @@ import TestPreviewPage from './pages/TestPreviewPage';
 // ✅ NEW: Import student test flow components
 import TestDetailsPage from './pages/TestDetailsPage';
 import TestSessionPage from './pages/TestSessionPage';
+import { TestSessionProvider } from './context/TestSessionContext';
 // import TestResultsPage from './pages/TestResultsPage'; // You'll need to create this
 
 // Placeholder components for missing pages
@@ -37,7 +38,7 @@ const PlaceholderPage = ({ title }: { title: string }) => (
               <i className="fas fa-hammer text-primary mb-4" style={{ fontSize: '4rem' }}></i>
               <h2 className="h3 mb-3">{title}</h2>
               <p className="text-muted mb-4">This page is under construction and will be available soon.</p>
-              <button 
+              <button
                 className="btn btn-primary"
                 onClick={() => window.history.back()}
               >
@@ -55,7 +56,7 @@ const PlaceholderPage = ({ title }: { title: string }) => (
 // Protected Route component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated, loading } = useAuth();
-  
+
   if (loading) {
     return (
       <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
@@ -65,14 +66,14 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
       </div>
     );
   }
-  
+
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
 };
 
 // Admin Route component - only allows admin and instructor roles
 const AdminRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, isAuthenticated, loading } = useAuth();
-  
+
   if (loading) {
     return (
       <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
@@ -82,22 +83,22 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
       </div>
     );
   }
-  
+
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
-  
+
   if (user?.role !== 'admin' && user?.role !== 'instructor') {
     return <Navigate to="/dashboard" replace />;
   }
-  
+
   return <>{children}</>;
 };
 
 // Student Route component - only allows students
 const StudentRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, isAuthenticated, loading } = useAuth();
-  
+
   if (loading) {
     return (
       <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
@@ -107,27 +108,27 @@ const StudentRoute = ({ children }: { children: React.ReactNode }) => {
       </div>
     );
   }
-  
+
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
-  
+
   if (user?.role !== 'student') {
     return <Navigate to="/dashboard" replace />;
   }
-  
+
   return <>{children}</>;
 };
 
 // SSO Callback component
 const SSOCallback = () => {
   const navigate = useNavigate();
-  
+
   React.useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const success = urlParams.get('success');
     const error = urlParams.get('error');
-    
+
     if (success === 'true') {
       // SSO successful, navigate to dashboard without page reload
       navigate('/dashboard', { replace: true });
@@ -139,7 +140,7 @@ const SSOCallback = () => {
       navigate('/login', { replace: true });
     }
   }, [navigate]);
-  
+
   return (
     <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
       <div className="text-center">
@@ -161,271 +162,273 @@ function AppRoutes() {
         <Route path="/login" element={<AuthPage mode="login" />} />
         <Route path="/register" element={<AuthPage mode="register" />} />
         <Route path="/auth/callback" element={<SSOCallback />} />
-        
+
         {/* Protected Routes */}
-        <Route 
-          path="/dashboard" 
+        <Route
+          path="/dashboard"
           element={
             <ProtectedRoute>
               <Dashboard />
             </ProtectedRoute>
-          } 
+          }
         />
-        
-        {/* ✅ NEW: Student Test Flow Routes */}
-        <Route 
-          path="/test-details/:testId" 
+
+        {/* ✅ FIXED: Student Test Flow Routes - TestSessionProvider only wraps test-session */}
+        <Route
+          path="/test-details/:testId"
           element={
             <StudentRoute>
               <TestDetailsPage />
             </StudentRoute>
-          } 
+          }
         />
-        <Route 
-          path="/test-session/:sessionId" 
+        <Route
+          path="/test-session/:sessionId"
           element={
             <StudentRoute>
-              <TestSessionPage />
+              <TestSessionProvider>
+                <TestSessionPage />
+              </TestSessionProvider>
             </StudentRoute>
-          } 
+          }
         />
-        <Route 
-          path="/test-results/:sessionId" 
+        <Route
+          path="/test-results/:sessionId"
           element={
             <StudentRoute>
               <PlaceholderPage title="Test Results" />
             </StudentRoute>
-          } 
+          }
         />
-        
+
         {/* Admin Dashboard - Main admin landing page */}
-        <Route 
-          path="/admin" 
+        <Route
+          path="/admin"
           element={
             <AdminRoute>
               <AdminDashboard />
             </AdminRoute>
-          } 
+          }
         />
-        
+
         {/* Admin Management Routes */}
-        <Route 
-          path="/admin/users" 
+        <Route
+          path="/admin/users"
           element={
             <AdminRoute>
               <PlaceholderPage title="User Management" />
             </AdminRoute>
-          } 
+          }
         />
-        <Route 
-          path="/admin/users/new" 
+        <Route
+          path="/admin/users/new"
           element={
             <AdminRoute>
               <PlaceholderPage title="Add New User" />
             </AdminRoute>
-          } 
+          }
         />
-        
+
         {/* ✅ CORRECTED: Question Bank Routes */}
-        <Route 
-          path="/admin/question-bank" 
+        <Route
+          path="/admin/question-bank"
           element={
             <AdminRoute>
               <QuestionBankPage />
             </AdminRoute>
-          } 
+          }
         />
-        <Route 
-          path="/admin/question-bank/add" 
+        <Route
+          path="/admin/question-bank/add"
           element={
             <AdminRoute>
               <QuestionFormComponent />
             </AdminRoute>
-          } 
+          }
         />
-        <Route 
-          path="/admin/question-bank/edit/:questionId" 
+        <Route
+          path="/admin/question-bank/edit/:questionId"
           element={
             <AdminRoute>
               <EditQuestionPage />
             </AdminRoute>
-          } 
+          }
         />
-        <Route 
-          path="/admin/question-bank/view/:questionId" 
+        <Route
+          path="/admin/question-bank/view/:questionId"
           element={
             <AdminRoute>
               <ViewQuestionPage />
             </AdminRoute>
-          } 
+          }
         />
         {/* ✅ IMPORTANT: This must come AFTER the specific routes above */}
-        <Route 
-          path="/admin/question-bank/:skillName" 
+        <Route
+          path="/admin/question-bank/:skillName"
           element={
             <AdminRoute>
               <SkillQuestionsPage />
             </AdminRoute>
-          } 
+          }
         />
-        <Route 
-          path="/admin/question-bank/import" 
+        <Route
+          path="/admin/question-bank/import"
           element={
             <AdminRoute>
               <PlaceholderPage title="Import Questions" />
             </AdminRoute>
-          } 
+          }
         />
-        
+
         {/* ✅ UPDATED: Test Management Routes */}
-        <Route 
-          path="/admin/tests" 
+        <Route
+          path="/admin/tests"
           element={
             <AdminRoute>
               <TestManagementPage />
             </AdminRoute>
-          } 
+          }
         />
-        <Route 
-          path="/admin/tests/new" 
+        <Route
+          path="/admin/tests/new"
           element={
             <AdminRoute>
               <CreateTestPage />
             </AdminRoute>
-          } 
+          }
         />
         {/* ✅ NEW: Test-specific routes - ORDER MATTERS! Put specific routes first */}
-        <Route 
-          path="/admin/tests/preview/:testId" 
+        <Route
+          path="/admin/tests/preview/:testId"
           element={
             <AdminRoute>
               <TestPreviewPage />
             </AdminRoute>
-          } 
+          }
         />
-        <Route 
-          path="/admin/tests/edit/:testId" 
+        <Route
+          path="/admin/tests/edit/:testId"
           element={
             <AdminRoute>
               <PlaceholderPage title="Edit Test" />
             </AdminRoute>
-          } 
+          }
         />
-        <Route 
-          path="/admin/tests/view/:testId" 
+        <Route
+          path="/admin/tests/view/:testId"
           element={
             <AdminRoute>
               <PlaceholderPage title="View Test Details" />
             </AdminRoute>
-          } 
+          }
         />
-        
+
         {/* Other Admin Routes */}
-        <Route 
-          path="/admin/test-sessions" 
+        <Route
+          path="/admin/test-sessions"
           element={
             <AdminRoute>
               <PlaceholderPage title="Test Sessions Monitor" />
             </AdminRoute>
-          } 
+          }
         />
-        <Route 
-          path="/admin/analytics" 
+        <Route
+          path="/admin/analytics"
           element={
             <AdminRoute>
               <PlaceholderPage title="Analytics Dashboard" />
             </AdminRoute>
-          } 
+          }
         />
-        <Route 
-          path="/admin/organizations" 
+        <Route
+          path="/admin/organizations"
           element={
             <AdminRoute>
               <PlaceholderPage title="Organization Management" />
             </AdminRoute>
-          } 
+          }
         />
-        <Route 
-          path="/admin/organizations/new" 
+        <Route
+          path="/admin/organizations/new"
           element={
             <AdminRoute>
               <PlaceholderPage title="Add New Organization" />
             </AdminRoute>
-          } 
+          }
         />
-        <Route 
-          path="/admin/global-content" 
+        <Route
+          path="/admin/global-content"
           element={
             <AdminRoute>
               <PlaceholderPage title="Global Content Management" />
             </AdminRoute>
-          } 
+          }
         />
-        <Route 
-          path="/admin/system-health" 
+        <Route
+          path="/admin/system-health"
           element={
             <AdminRoute>
               <PlaceholderPage title="System Health Monitor" />
             </AdminRoute>
-          } 
+          }
         />
-        <Route 
-          path="/admin/settings" 
+        <Route
+          path="/admin/settings"
           element={
             <AdminRoute>
               <PlaceholderPage title="Admin Settings" />
             </AdminRoute>
-          } 
+          }
         />
-        
+
         {/* Student Routes - Keep existing ones */}
-        <Route 
-          path="/tests" 
+        <Route
+          path="/tests"
           element={
             <ProtectedRoute>
               <PlaceholderPage title="Available Tests" />
             </ProtectedRoute>
-          } 
+          }
         />
-        <Route 
-          path="/results" 
+        <Route
+          path="/results"
           element={
             <ProtectedRoute>
               <PlaceholderPage title="My Test Results" />
             </ProtectedRoute>
-          } 
+          }
         />
-        <Route 
-          path="/profile" 
+        <Route
+          path="/profile"
           element={
             <ProtectedRoute>
               <PlaceholderPage title="User Profile" />
             </ProtectedRoute>
-          } 
+          }
         />
-        <Route 
-          path="/settings" 
+        <Route
+          path="/settings"
           element={
             <ProtectedRoute>
               <PlaceholderPage title="User Settings" />
             </ProtectedRoute>
-          } 
+          }
         />
-        
+
         {/* Legacy routes for backward compatibility */}
-        <Route 
-          path="/questions" 
+        <Route
+          path="/questions"
           element={<Navigate to="/admin/question-bank" replace />}
         />
-        <Route 
-          path="/users" 
+        <Route
+          path="/users"
           element={<Navigate to="/admin/users" replace />}
         />
-        <Route 
-          path="/analytics" 
+        <Route
+          path="/analytics"
           element={<Navigate to="/admin/analytics" replace />}
         />
-        
+
         {/* Catch all route - redirect to dashboard if authenticated, otherwise to landing */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

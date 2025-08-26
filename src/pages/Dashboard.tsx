@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Container,
@@ -17,7 +17,7 @@ import {
 } from 'reactstrap';
 import { useAuth } from '../context/AuthContext';
 import apiService from '../services/ApiService';
-import type { Test, TestSession, Result, TestType, Language, Tags } from '../types';
+import type { Test, TestSession, Result, TestType, Language } from '../types';
 
 const Dashboard: React.FC = () => {
   const { user, logout } = useAuth();
@@ -34,15 +34,37 @@ const Dashboard: React.FC = () => {
     averageScore: 0
   });
 
+  // Add request tracking to prevent double calls in React Strict Mode
+  const isRequestInProgress = useRef(false);
+  const hasDataLoaded = useRef(false);
+
   useEffect(() => {
-    fetchDashboardData();
+    // Only fetch if we haven't loaded data and no request is in progress
+    if (!hasDataLoaded.current && !isRequestInProgress.current) {
+      fetchDashboardData();
+    }
   }, []);
 
   const fetchDashboardData = async () => {
+    // Prevent concurrent requests (React Strict Mode issue)
+    if (isRequestInProgress.current) {
+      console.log('Dashboard: Request already in progress, skipping...');
+      return;
+    }
+
+    // If we already have data, don't fetch again unless explicitly refreshing
+    if (hasDataLoaded.current && availableTests.length > 0) {
+      console.log('Dashboard: Data already loaded, skipping...');
+      return;
+    }
+
+    isRequestInProgress.current = true;
     setLoading(true);
     setError(null);
 
     try {
+      console.log('Dashboard: Starting data fetch...');
+
       // Fetch available tests (only active tests for students)
       const testsResponse = await apiService.getAllTests({ status: 'active' });
       if (testsResponse.error) {
@@ -89,12 +111,22 @@ const Dashboard: React.FC = () => {
         averageScore: Math.round(averageScore)
       });
 
+      hasDataLoaded.current = true;
+      console.log('Dashboard: Data fetch completed successfully');
+
     } catch (err) {
       console.error('Dashboard data fetch error:', err);
       setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
     } finally {
       setLoading(false);
+      isRequestInProgress.current = false;
     }
+  };
+
+  // Manual refresh function (for retry button)
+  const refreshDashboard = () => {
+    hasDataLoaded.current = false;
+    fetchDashboardData();
   };
 
   const handleStartTest = async (testId: string) => {
@@ -190,6 +222,12 @@ const Dashboard: React.FC = () => {
               <Alert color="danger" className="mb-4">
                 <i className="fas fa-exclamation-triangle me-2"></i>
                 {error}
+                <div className="mt-2">
+                  <Button color="danger" size="sm" onClick={refreshDashboard}>
+                    <i className="fas fa-redo me-2"></i>
+                    Retry
+                  </Button>
+                </div>
               </Alert>
             )}
           </Col>

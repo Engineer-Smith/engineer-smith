@@ -439,6 +439,22 @@ class ApiService {
     }
   }
 
+  async syncTime(sessionId: string): Promise<ApiResponse<{
+    serverTime: number;
+    startTime: number;
+    elapsedSeconds: number;
+    sessionTimeSpent: number;
+  }>> {
+    try {
+      console.log('ApiService: Syncing time for session:', sessionId);
+      const response = await this.client.get(`/api/test-sessions/${sessionId}/time-sync`);
+      console.log('ApiService: syncTime response:', response.data);
+      return { data: response.data };
+    } catch (error) {
+      return this.handleError(error);
+    }
+  }
+
   async getResult(resultId: string): Promise<ApiResponse<Result>> {
     try {
       console.log('ApiService: Fetching result:', resultId);
@@ -506,15 +522,15 @@ class ApiService {
   }
 
   async getTestWithQuestions(testId: string): Promise<ApiResponse<Test>> {
-  try {
-    console.log('ApiService: Fetching test with questions:', testId);
-    const response = await this.client.get(`/api/tests/${testId}/with-questions`);
-    console.log('ApiService: getTestWithQuestions response:', response.data);
-    return { data: response.data };
-  } catch (error) {
-    return this.handleError(error);
+    try {
+      console.log('ApiService: Fetching test with questions:', testId);
+      const response = await this.client.get(`/api/tests/${testId}/with-questions`);
+      console.log('ApiService: getTestWithQuestions response:', response.data);
+      return { data: response.data };
+    } catch (error) {
+      return this.handleError(error);
+    }
   }
-}
 
   async getQuestionStats(): Promise<ApiResponse<{
     byLanguage: Array<{

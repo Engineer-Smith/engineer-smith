@@ -76,6 +76,7 @@ interface SessionTestTakingInterfaceProps {
   test: Test;
   testSession?: TestSession;
   currentQuestionIndex: number;
+  currentSectionIndex: number; // ADDED: Current section index
   answers: Record<string, any>;
   flaggedQuestions: Set<number>;
   timeRemaining: number;
@@ -95,6 +96,7 @@ const SessionTestTakingInterface: React.FC<SessionTestTakingInterfaceProps> = ({
   test,
   testSession,
   currentQuestionIndex,
+  currentSectionIndex, // ADDED: Accept current section index
   answers,
   flaggedQuestions,
   timeRemaining,
@@ -135,32 +137,33 @@ const SessionTestTakingInterface: React.FC<SessionTestTakingInterfaceProps> = ({
     }
   }, [isOffline, queuedChanges]);
 
-  // Flatten questions with section information
+  // FIXED: Filter questions by current section when sections are enabled
   const flattenedQuestions: FlattenedQuestion[] = React.useMemo(() => {
     if (!test) return [];
 
     const flattened: FlattenedQuestion[] = [];
-    let overallIndex = 0;
 
     if (test.settings?.useSections && test.sections) {
-      test.sections.forEach((section, sectionIndex) => {
-        section.questions?.forEach((questionRef, sectionQuestionIndex) => {
+      // Only show questions from the current section
+      const currentSection = test.sections[currentSectionIndex];
+      if (currentSection) {
+        currentSection.questions?.forEach((questionRef, sectionQuestionIndex) => {
           const question = (questionRef as any).questionData;
           if (question) {
             flattened.push({
               ...question,
               _id: question._id,
               points: questionRef.points,
-              sectionIndex,
-              sectionName: section.name,
-              questionIndex: overallIndex,
+              sectionIndex: currentSectionIndex,
+              sectionName: currentSection.name,
+              questionIndex: sectionQuestionIndex, // Use section-relative index
               sectionQuestionIndex
             });
-            overallIndex++;
           }
         });
-      });
+      }
     } else if (test.questions) {
+      // Non-sectioned tests - show all questions
       test.questions.forEach((questionRef, index) => {
         const question = (questionRef as any).questionData;
         if (question) {
@@ -175,22 +178,20 @@ const SessionTestTakingInterface: React.FC<SessionTestTakingInterfaceProps> = ({
     }
 
     return flattened;
-  }, [test]);
+  }, [test, currentSectionIndex]); // FIXED: Added currentSectionIndex dependency
 
   const currentQuestion = flattenedQuestions[currentQuestionIndex];
   const totalQuestions = flattenedQuestions.length;
 
   // Navigation functions
   const goToNextQuestion = () => {
-    if (isDisabled || currentQuestionIndex < totalQuestions - 1) {
-      onQuestionNavigation(currentQuestionIndex + 1);
-    }
+    if (isDisabled || currentQuestionIndex >= totalQuestions - 1) return;
+    onQuestionNavigation(currentQuestionIndex + 1);
   };
 
   const goToPreviousQuestion = () => {
-    if (isDisabled || currentQuestionIndex > 0) {
-      onQuestionNavigation(currentQuestionIndex - 1);
-    }
+    if (isDisabled || currentQuestionIndex <= 0) return;
+    onQuestionNavigation(currentQuestionIndex - 1);
   };
 
   // Get current section info
@@ -199,24 +200,24 @@ const SessionTestTakingInterface: React.FC<SessionTestTakingInterfaceProps> = ({
       return null;
     }
     
-    const section = test.sections?.[currentQuestion.sectionIndex!];
-    const sectionQuestions = flattenedQuestions.filter(q => q.sectionIndex === currentQuestion.sectionIndex);
-    const currentInSection = sectionQuestions.findIndex(q => q.questionIndex === currentQuestionIndex);
+    const section = test.sections?.[currentSectionIndex];
     
     return {
       name: section?.name || 'Section',
-      current: currentInSection + 1,
-      total: sectionQuestions.length,
+      current: currentQuestionIndex + 1, // Section-relative question number
+      total: totalQuestions, // Total questions in current section
       timeLimit: section?.timeLimit || 0
     };
   };
 
   const sectionInfo = getCurrentSectionInfo();
 
-  // Progress calculation
+  // Progress calculation - based on current section only
   const progressPercentage = totalQuestions > 0 ? ((currentQuestionIndex + 1) / totalQuestions) * 100 : 0;
-  const answeredCount = Object.keys(answers).length;
-  const flaggedCount = flaggedQuestions.size;
+  
+  // Count answers only for current section questions
+  const answeredCount = flattenedQuestions.filter(q => answers[q._id] !== undefined).length;
+  const flaggedCount = Array.from(flaggedQuestions).filter(index => index < totalQuestions).length;
 
   // Format time
   const formatTime = (seconds: number): string => {
@@ -243,7 +244,10 @@ const SessionTestTakingInterface: React.FC<SessionTestTakingInterfaceProps> = ({
             <FileText size={48} className="text-muted mb-3" />
             <h5>No questions available</h5>
             <p className="text-muted">
-              This test doesn't have any questions yet or the questions couldn't be loaded.
+              {test?.settings?.useSections 
+                ? `No questions found in this section or the section couldn't be loaded.`
+                : `This test doesn't have any questions yet or the questions couldn't be loaded.`
+              }
             </p>
           </Col>
         </Row>
@@ -300,8 +304,8 @@ const SessionTestTakingInterface: React.FC<SessionTestTakingInterfaceProps> = ({
                 <div>
                   <h6 className="mb-0">Question {currentQuestionIndex + 1} of {totalQuestions}</h6>
                   <small className="text-muted">
-                    {sectionInfo && `${sectionInfo.name} (${sectionInfo.current}/${sectionInfo.total})`}
-                    {timeRemaining > 0 && !sectionInfo && `Time: ${formatTime(timeRemaining)}`}
+                    {sectionInfo ? `${sectionInfo.name}` : `Progress: ${currentQuestionIndex + 1}/${totalQuestions}`}
+                    {timeRemaining > 0 && !sectionInfo && ` • Time: ${formatTime(timeRemaining)}`}
                   </small>
                 </div>
               </div>
@@ -310,7 +314,9 @@ const SessionTestTakingInterface: React.FC<SessionTestTakingInterfaceProps> = ({
             <Col md={4} className="text-center">
               <div>
                 <div className="mb-1">
-                  <small className="text-muted">Progress</small>
+                  <small className="text-muted">
+                    {test?.settings?.useSections ? 'Section Progress' : 'Test Progress'}
+                  </small>
                 </div>
                 <Progress value={progressPercentage} color="primary" style={{ height: '8px' }} />
                 <div className="mt-1">
@@ -372,12 +378,12 @@ const SessionTestTakingInterface: React.FC<SessionTestTakingInterfaceProps> = ({
       <div style={{ flex: 1, overflow: 'hidden' }}>
         <Container fluid style={{ height: '100%' }}>
           <Row style={{ height: '100%' }} className="g-0">
-            {/* Question Panel (collapsible on mobile) */}
+            {/* Question Panel (collapsible on mobile) - Only shows current section questions */}
             {showQuestionPanel && (
               <Col md={3} className="border-end bg-light">
                 <div className="p-3 border-bottom">
                   <h6 className="mb-0 d-flex justify-content-between align-items-center">
-                    Questions 
+                    {test?.settings?.useSections ? 'Section Questions' : 'Questions'} 
                     <Button 
                       color="outline-secondary" 
                       size="sm"
@@ -386,45 +392,36 @@ const SessionTestTakingInterface: React.FC<SessionTestTakingInterfaceProps> = ({
                       ×
                     </Button>
                   </h6>
+                  {sectionInfo && (
+                    <small className="text-muted">{sectionInfo.name}</small>
+                  )}
                 </div>
                 <div className="p-2" style={{ height: 'calc(100% - 60px)', overflowY: 'auto' }}>
                   {flattenedQuestions.map((question, index) => {
-                    const isCurrentSection = question.sectionIndex === currentQuestion.sectionIndex;
                     const hasUnsaved = hasUnsavedChanges(question._id);
                     
                     return (
-                      <div key={question._id}>
-                        {/* Section header */}
-                        {index === 0 || flattenedQuestions[index - 1].sectionIndex !== question.sectionIndex ? (
-                          <div className="mb-2 mt-2">
-                            <small className="text-muted fw-bold">
-                              {question.sectionName || 'Questions'}
-                            </small>
-                          </div>
-                        ) : null}
-                        
-                        <Button
-                          color={index === currentQuestionIndex ? 'primary' : 'outline-secondary'}
-                          size="sm"
-                          className="mb-2 w-100 d-flex justify-content-between align-items-center position-relative"
-                          onClick={() => onQuestionNavigation(index)}
-                          style={{ opacity: isCurrentSection ? 1 : 0.7 }}
-                          disabled={isPaused}
-                        >
-                          <span>Q{index + 1}</span>
-                          <div className="d-flex gap-1 align-items-center">
-                            {answers[question._id] !== undefined && (
-                              <CheckCircle size={12} className="text-success" />
-                            )}
-                            {flaggedQuestions.has(index) && (
-                              <Flag size={12} className="text-warning" />
-                            )}
-                            {hasUnsaved && (
-                              <Save size={10} className="text-info" />
-                            )}
-                          </div>
-                        </Button>
-                      </div>
+                      <Button
+                        key={question._id}
+                        color={index === currentQuestionIndex ? 'primary' : 'outline-secondary'}
+                        size="sm"
+                        className="mb-2 w-100 d-flex justify-content-between align-items-center position-relative"
+                        onClick={() => onQuestionNavigation(index)}
+                        disabled={isPaused}
+                      >
+                        <span>Q{index + 1}</span>
+                        <div className="d-flex gap-1 align-items-center">
+                          {answers[question._id] !== undefined && (
+                            <CheckCircle size={12} className="text-success" />
+                          )}
+                          {flaggedQuestions.has(index) && (
+                            <Flag size={12} className="text-warning" />
+                          )}
+                          {hasUnsaved && (
+                            <Save size={10} className="text-info" />
+                          )}
+                        </div>
+                      </Button>
                     );
                   })}
                 </div>
