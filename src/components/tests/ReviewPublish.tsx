@@ -148,18 +148,19 @@ const ReviewPublish: React.FC<WizardStepProps> = ({
             console.log('payload.status:', payload.status);
 
             console.log('=== DEBUG: Calling API ===');
-            const response = await apiService.createTest(payload);
+            // FIXED: createTest returns Test directly, no wrapper
+            const createdTest = await apiService.createTest(payload);
             console.log('=== DEBUG: API Response ===');
-            console.log('response:', response);
+            console.log('createdTest:', createdTest);
 
-            if (response.error) {
-                console.log('DEBUG: API returned error:', response.message);
-                throw new Error(response.message || 'Failed to create test');
+            if (!createdTest || !createdTest._id) {
+                console.log('DEBUG: API returned invalid data');
+                throw new Error('Failed to create test - invalid response');
             }
 
             console.log('=== DEBUG: Success! ===');
-            console.log('Created test:', response.data);
-            console.log('Created test status:', response.data?.status);
+            console.log('Created test:', createdTest);
+            console.log('Created test status:', createdTest.status);
 
             setError(null);
             onComplete?.();

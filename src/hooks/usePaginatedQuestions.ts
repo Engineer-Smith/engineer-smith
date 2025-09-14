@@ -1,4 +1,4 @@
-// hooks/usePaginatedQuestions.ts
+// hooks/usePaginatedQuestions.ts - FIXED: Use proper pagination API with explicit types
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import apiService from '../services/ApiService';
@@ -44,9 +44,9 @@ export const usePaginatedQuestions = (
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
   const [filters, setFiltersState] = useState<PaginationFilters>(initialFilters);
 
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
   const hasNextPage = currentPage < totalPages;
   const hasPrevPage = currentPage > 1;
 
@@ -70,35 +70,37 @@ export const usePaginatedQuestions = (
 
       console.log('usePaginatedQuestions: Fetching with params:', params);
 
-      const response = await apiService.getAllQuestions(params);
+      // FIXED: Use the proper pagination API that returns totalCount and totalPages
+      const response = await apiService.getPaginatedQuestions(params);
 
-      if (response.error || !Array.isArray(response.data)) {
+      if (response.error || !response.data) {
         throw new Error(response.message || 'Failed to fetch questions');
       }
 
-      let questionsData = response.data;
+      let questionsData = response.data.questions;
+      const totalCount = response.data.totalCount;
+      const totalPagesFromAPI = response.data.totalPages;
 
       // Apply client-side search filter if provided
       if (filters.search) {
-        questionsData = questionsData.filter(question =>
+        // FIXED: Explicitly type the filter callback parameters
+        questionsData = questionsData.filter((question: Question) =>
           question.title.toLowerCase().includes(filters.search!.toLowerCase()) ||
           question.description.toLowerCase().includes(filters.search!.toLowerCase()) ||
-          (question.tags && question.tags.some(tag => 
+          (question.tags && question.tags.some((tag: string) => 
             tag.toLowerCase().includes(filters.search!.toLowerCase())
           ))
         );
+        
+        // FIXED: Recalculate totals for filtered results
+        setTotalItems(questionsData.length);
+        setTotalPages(Math.ceil(questionsData.length / itemsPerPage));
+      } else {
+        setTotalItems(totalCount);
+        setTotalPages(totalPagesFromAPI);
       }
 
       setQuestions(questionsData);
-      
-      // Estimate total items (this is a limitation of current backend)
-      // Ideally, the backend should return total count
-      if (questionsData.length < itemsPerPage) {
-        setTotalItems(skip + questionsData.length);
-      } else {
-        // Estimate there might be more pages
-        setTotalItems(skip + itemsPerPage + 1);
-      }
 
     } catch (error: any) {
       console.error('Error fetching questions:', error);

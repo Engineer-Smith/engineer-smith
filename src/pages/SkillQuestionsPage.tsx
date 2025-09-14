@@ -1,4 +1,4 @@
-// pages/SkillQuestionsPage.tsx
+// pages/SkillQuestionsPage.tsx - Clean build with language-based filtering and status filter
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -36,36 +36,138 @@ import {
   Eye,
   ChevronLeft,
   ChevronRight,
-  AlertTriangle
+  AlertTriangle,
+  Code,
+  CheckSquare,
+  Bug,
+  List,
+  SquareDashed,
+  TestTube,
+  FileText,
+  Layers
 } from 'lucide-react';
 import { skills } from '../config/skills';
-import type { Question } from '../types';
+import type { Question, QuestionType, QuestionCategory } from '../types';
+import {
+  getQuestionTypesForLanguage,
+  getCategoriesForLanguage,
+  getSupportedTypeCount
+} from '../utils/languageQuestionTypes';
 
 const ITEMS_PER_PAGE = 12;
+
+// Type configurations with icons and descriptions
+const QUESTION_TYPE_CONFIGS = {
+  multipleChoice: {
+    label: 'Multiple Choice',
+    icon: List,
+    color: 'primary',
+    description: 'Choose from multiple options'
+  },
+  trueFalse: {
+    label: 'True/False',
+    icon: CheckSquare,
+    color: 'info',
+    description: 'True or false answer'
+  },
+  fillInTheBlank: {
+    label: 'Fill in the Blank',
+    icon: SquareDashed,
+    color: 'success',
+    description: 'Complete missing code parts'
+  },
+  codeChallenge: {
+    label: 'Code Challenge',
+    icon: Code,
+    color: 'warning',
+    description: 'Write code to solve problems'
+  },
+  codeDebugging: {
+    label: 'Code Debugging',
+    icon: Bug,
+    color: 'danger',
+    description: 'Find and fix code bugs'
+  }
+} as const;
+
+const CATEGORY_CONFIGS = {
+  logic: { label: 'Logic', color: 'primary', description: 'Algorithmic thinking' },
+  ui: { label: 'UI', color: 'success', description: 'User interface design' },
+  syntax: { label: 'Syntax', color: 'info', description: 'Language syntax rules' }
+} as const;
+
+const STATUS_CONFIGS = {
+  draft: { label: 'Draft', color: 'secondary', description: 'Work in progress' },
+  active: { label: 'Active', color: 'success', description: 'Ready for use' },
+  archived: { label: 'Archived', color: 'warning', description: 'No longer active' }
+} as const;
 
 const SkillQuestionsPage: React.FC = () => {
   const { skillName } = useParams<{ skillName: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  
+
+  // State
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalQuestions, setTotalQuestions] = useState(0);
+
+  // Filter state
   const [searchTerm, setSearchTerm] = useState('');
   const [difficultyFilter, setDifficultyFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
-  const [subLanguageFilter, setSubLanguageFilter] = useState<string>('all'); // For backend filtering
-  
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [subLanguageFilter, setSubLanguageFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('active');
+
   // Delete modal state
   const [deleteModal, setDeleteModal] = useState(false);
   const [questionToDelete, setQuestionToDelete] = useState<{ id: string; title: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  // Find the skill configuration
+  // Find skill configuration
   const skill = skills.find(s => s.skill === skillName);
-  
+
+  // Get current effective language
+  const getCurrentLanguage = () => {
+    if (!skill) return 'javascript';
+
+    if (skill.subCategories) {
+      return subLanguageFilter === 'all' ? skill.subCategories[0] : subLanguageFilter;
+    }
+    return skill.skill;
+  };
+
+  // Get available options for current language
+  const getAvailableQuestionTypes = () => {
+    const currentLang = getCurrentLanguage();
+    return getQuestionTypesForLanguage(currentLang as any);
+  };
+
+  const getAvailableCategories = () => {
+    const currentLang = getCurrentLanguage();
+    return getCategoriesForLanguage(currentLang as any);
+  };
+
+  // Reset filters when language changes
+  useEffect(() => {
+    const availableTypes = getAvailableQuestionTypes();
+    const availableCategories = getAvailableCategories();
+
+    // Reset type filter if current selection is not available
+    if (typeFilter !== 'all' && !availableTypes.includes(typeFilter as QuestionType)) {
+      setTypeFilter('all');
+    }
+
+    // Reset category filter if current selection is not available
+    if (categoryFilter !== 'all' && !availableCategories.includes(categoryFilter as QuestionCategory)) {
+      setCategoryFilter('all');
+    }
+  }, [subLanguageFilter, typeFilter, categoryFilter]);
+
+  // Fetch questions
   const fetchQuestions = async (page: number = 1) => {
     if (!user || !skill) return;
 
@@ -80,12 +182,9 @@ const SkillQuestionsPage: React.FC = () => {
       };
 
       // Handle language filtering
-      if (skill.skill === 'backend') {
-        // For backend, we need to handle multiple languages
+      if (skill.subCategories) {
         if (subLanguageFilter === 'all') {
-          // We'll need to make multiple requests and combine results
-          // Or modify backend to accept multiple languages
-          params.language = 'express'; // Default for now
+          params.language = skill.subCategories.join(',');
         } else {
           params.language = subLanguageFilter;
         }
@@ -93,30 +192,31 @@ const SkillQuestionsPage: React.FC = () => {
         params.language = skill.skill;
       }
 
-      // Add filters if not 'all'
-      if (difficultyFilter !== 'all') {
-        params.difficulty = difficultyFilter;
+      // Add filters
+      if (difficultyFilter !== 'all') params.difficulty = difficultyFilter;
+      if (typeFilter !== 'all') params.type = typeFilter;
+      if (categoryFilter !== 'all') params.category = categoryFilter;
+      if (statusFilter !== 'all') params.status = statusFilter;
+
+      // FIXED: getAllQuestions with includeTotalCount returns object or array directly
+      const response = await apiService.getAllQuestions(params, true);
+
+      // FIXED: No error property, response IS the data
+      if (!response) {
+        setQuestions([]);
+        setTotalQuestions(0);
+        return;
       }
-      if (typeFilter !== 'all') {
-        params.type = typeFilter;
+
+      // Handle response format - can be array or object with pagination info
+      if (Array.isArray(response)) {
+        setQuestions(response);
+        setTotalQuestions(response.length);
+      } else {
+        // Response is paginated object: { questions: Question[], totalCount: number, totalPages: number }
+        setQuestions(response.questions || []);
+        setTotalQuestions(response.totalCount || 0);
       }
-
-      console.log('SkillQuestionsPage: Fetching questions with params:', params);
-
-      const response = await apiService.getAllQuestions(params);
-
-      if (response.error || !Array.isArray(response.data)) {
-        throw new Error(response.message || 'Failed to fetch questions');
-      }
-
-      setQuestions(response.data);
-      
-      // For total count, we'd need a separate endpoint or include it in the response
-      // For now, estimate based on current results
-      setTotalQuestions(response.data.length < ITEMS_PER_PAGE ? 
-        skip + response.data.length : 
-        skip + ITEMS_PER_PAGE + 1
-      );
 
     } catch (error: any) {
       console.error('Error fetching questions:', error);
@@ -130,23 +230,29 @@ const SkillQuestionsPage: React.FC = () => {
     if (skill) {
       fetchQuestions(currentPage);
     }
-  }, [skill, currentPage, difficultyFilter, typeFilter, subLanguageFilter]);
+  }, [skill, currentPage, difficultyFilter, typeFilter, categoryFilter, subLanguageFilter, statusFilter]);
 
-  // Filter questions based on search term (client-side)
+  // Client-side search filtering
   const filteredQuestions = questions.filter(question =>
     question.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    question.description.toLowerCase().includes(searchTerm.toLowerCase())
+    question.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (question.tags && question.tags.some(tag =>
+      tag.toLowerCase().includes(searchTerm.toLowerCase())
+    ))
   );
 
   const totalPages = Math.ceil(totalQuestions / ITEMS_PER_PAGE);
 
+  // Event handlers
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleCreateQuestion = () => {
-    navigate('/admin/question-bank/add', { 
-      state: { defaultLanguage: skill?.skill === 'backend' ? 'express' : skill?.skill } 
+    const defaultLanguage = skill?.subCategories ? skill.subCategories[0] : skill?.skill;
+    navigate('/admin/question-bank/add', {
+      state: { defaultLanguage }
     });
   };
 
@@ -165,19 +271,19 @@ const SkillQuestionsPage: React.FC = () => {
 
   const confirmDelete = async () => {
     if (!questionToDelete) return;
-    
+
     try {
       setDeleting(true);
+      // FIXED: deleteQuestion returns { message: string } directly
       const response = await apiService.deleteQuestion(questionToDelete.id);
-      if (response.error) {
-        throw new Error(response.message || 'Failed to delete question');
+
+      // FIXED: No error property, response IS the success object
+      if (!response || !response.message) {
+        throw new Error('Failed to delete question');
       }
-      
-      // Close modal and reset state
+
       setDeleteModal(false);
       setQuestionToDelete(null);
-      
-      // Refresh the list
       fetchQuestions(currentPage);
     } catch (error: any) {
       alert('Error deleting question: ' + error.message);
@@ -191,6 +297,64 @@ const SkillQuestionsPage: React.FC = () => {
     setQuestionToDelete(null);
   };
 
+  const clearAllFilters = () => {
+    setSearchTerm('');
+    setDifficultyFilter('all');
+    setTypeFilter('all');
+    setCategoryFilter('all');
+    setSubLanguageFilter('all');
+    setStatusFilter('active');
+  };
+
+  // Get type-specific info for display
+  const getTypeSpecificInfo = (question: Question) => {
+    switch (question.type) {
+      case 'codeChallenge':
+      case 'codeDebugging':
+        if (question.category === 'logic' && question.testCases) {
+          return {
+            icon: TestTube,
+            text: `${question.testCases.length} test cases`,
+            color: 'info'
+          };
+        }
+        break;
+      case 'fillInTheBlank':
+        if (question.blanks) {
+          return {
+            icon: SquareDashed,
+            text: `${question.blanks.length} blanks`,
+            color: 'success'
+          };
+        }
+        break;
+      case 'multipleChoice':
+        if (question.options) {
+          return {
+            icon: List,
+            text: `${question.options.length} options`,
+            color: 'primary'
+          };
+        }
+        break;
+      case 'codeDebugging':
+        if (question.buggyCode) {
+          return {
+            icon: Bug,
+            text: 'Has buggy code',
+            color: 'warning'
+          };
+        }
+        break;
+    }
+    return null;
+  };
+
+  // Get filtered options
+  const availableQuestionTypes = getAvailableQuestionTypes();
+  const availableCategories = getAvailableCategories();
+
+  // Loading and error states
   if (!skill) {
     return (
       <Container className="py-4">
@@ -245,8 +409,8 @@ const SkillQuestionsPage: React.FC = () => {
                 </div>
               </Col>
               <Col xs="auto">
-                <Button 
-                  color="success" 
+                <Button
+                  color="success"
                   onClick={handleCreateQuestion}
                   className="d-flex align-items-center"
                 >
@@ -260,10 +424,12 @@ const SkillQuestionsPage: React.FC = () => {
       </div>
 
       <Container className="py-4">
-        {/* Filters and Search */}
+        {/* Filters */}
         <Card className="border-0 shadow-sm mb-4">
           <CardBody>
-            <Row className="g-3">
+            {/* First Row - Search and Main Filters */}
+            <Row className="g-3 mb-3">
+              {/* Search */}
               <Col md={4}>
                 <InputGroup>
                   <InputGroupText>
@@ -277,7 +443,25 @@ const SkillQuestionsPage: React.FC = () => {
                   />
                 </InputGroup>
               </Col>
-              
+
+              {/* Status Filter */}
+              <Col md={2}>
+                <Input
+                  type="select"
+                  value={statusFilter}
+                  onChange={(e) => {
+                    console.log('Status filter changed to:', e.target.value);
+                    setStatusFilter(e.target.value);
+                  }}
+                >
+                  <option value="all">All Status</option>
+                  <option value="draft">Draft</option>
+                  <option value="active">Active</option>
+                  <option value="archived">Archived</option>
+                </Input>
+              </Col>
+
+              {/* Difficulty */}
               <Col md={2}>
                 <Input
                   type="select"
@@ -290,42 +474,128 @@ const SkillQuestionsPage: React.FC = () => {
                   <option value="hard">Hard</option>
                 </Input>
               </Col>
-              
+
+              {/* Question Type - Filtered by Language */}
               <Col md={2}>
                 <Input
                   type="select"
                   value={typeFilter}
                   onChange={(e) => setTypeFilter(e.target.value)}
+                  title={`Available types for ${getCurrentLanguage()}`}
                 >
                   <option value="all">All Types</option>
-                  <option value="multipleChoice">Multiple Choice</option>
-                  <option value="trueFalse">True/False</option>
-                  <option value="codeChallenge">Code Challenge</option>
-                  <option value="codeDebugging">Code Debugging</option>
+                  {availableQuestionTypes.map(type => {
+                    const config = QUESTION_TYPE_CONFIGS[type];
+                    return (
+                      <option key={type} value={type}>
+                        {config?.label || type}
+                      </option>
+                    );
+                  })}
                 </Input>
               </Col>
 
-              {/* Sub-language filter for backend */}
-              {skill.skill === 'backend' && (
-                <Col md={2}>
-                  <Input
-                    type="select"
-                    value={subLanguageFilter}
-                    onChange={(e) => setSubLanguageFilter(e.target.value)}
-                  >
-                    <option value="all">All Languages</option>
-                    <option value="express">Express</option>
-                    <option value="python">Python</option>
-                  </Input>
+              {/* Category - Filtered by Language */}
+              <Col md={2}>
+                <Input
+                  type="select"
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                >
+                  <option value="all">All Categories</option>
+                  {availableCategories.map(category => {
+                    const config = CATEGORY_CONFIGS[category as keyof typeof CATEGORY_CONFIGS];
+                    return (
+                      <option key={category} value={category}>
+                        {config?.label || category}
+                      </option>
+                    );
+                  })}
+                </Input>
+              </Col>
+            </Row>
+
+            {/* Second Row - Additional Filters */}
+            <Row className="g-3 align-items-center">
+              {/* Sub-language filter for combined skills */}
+              {skill.subCategories && (
+                <Col md={3}>
+                  <div>
+                    <label className="form-label small text-muted mb-1">Language</label>
+                    <Input
+                      type="select"
+                      value={subLanguageFilter}
+                      onChange={(e) => setSubLanguageFilter(e.target.value)}
+                      bsSize="sm"
+                    >
+                      <option value="all">All Languages</option>
+                      {skill.subCategories.map(lang => (
+                        <option key={lang} value={lang}>
+                          {lang.charAt(0).toUpperCase() + lang.slice(1)}
+                        </option>
+                      ))}
+                    </Input>
+                  </div>
                 </Col>
               )}
-              
-              <Col md={2}>
-                <div className="text-muted small">
-                  {filteredQuestions.length} questions found
+
+              {/* Clear Filters Button */}
+              <Col md={3}>
+                <Button
+                  color="outline-secondary"
+                  size="sm"
+                  onClick={clearAllFilters}
+                  className="d-flex align-items-center"
+                >
+                  Clear All Filters
+                </Button>
+              </Col>
+
+              {/* Results count and current filters */}
+              <Col md={6} className="text-end">
+                <div className="d-flex justify-content-end align-items-center gap-3">
+                  <div className="text-muted small">
+                    <strong>{filteredQuestions.length}</strong> questions found
+                  </div>
+
+                  {/* Active filter badges */}
+                  <div className="d-flex gap-1 flex-wrap">
+                    {statusFilter !== 'all' && (
+                      <Badge color="info" className="small">
+                        Status: {statusFilter}
+                      </Badge>
+                    )}
+                    {difficultyFilter !== 'all' && (
+                      <Badge color="info" className="small">
+                        {difficultyFilter}
+                      </Badge>
+                    )}
+                    {typeFilter !== 'all' && (
+                      <Badge color="info" className="small">
+                        {QUESTION_TYPE_CONFIGS[typeFilter as keyof typeof QUESTION_TYPE_CONFIGS]?.label || typeFilter}
+                      </Badge>
+                    )}
+                    {categoryFilter !== 'all' && (
+                      <Badge color="info" className="small">
+                        {CATEGORY_CONFIGS[categoryFilter as keyof typeof CATEGORY_CONFIGS]?.label || categoryFilter}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </Col>
             </Row>
+
+            {/* Language-specific info */}
+            {availableQuestionTypes.length < 5 && (
+              <Row className="mt-2">
+                <Col>
+                  <small className="text-muted">
+                    <strong>{getCurrentLanguage()}:</strong> Supports {getSupportedTypeCount(getCurrentLanguage() as any)} question types: {' '}
+                    {availableQuestionTypes.map(type => QUESTION_TYPE_CONFIGS[type]?.label || type).join(', ')}
+                  </small>
+                </Col>
+              </Row>
+            )}
           </CardBody>
         </Card>
 
@@ -343,78 +613,116 @@ const SkillQuestionsPage: React.FC = () => {
 
         {/* Questions Grid */}
         <Row className="g-3">
-          {filteredQuestions.map((question) => (
-            <Col key={question.id} md={6} lg={4}>
-              <Card className="h-100 border-0 shadow-sm">
-                <CardBody className="d-flex flex-column">
-                  <div className="d-flex justify-content-between align-items-start mb-2">
-                    <Badge color={
-                      question.difficulty === 'easy' ? 'success' :
-                      question.difficulty === 'medium' ? 'warning' : 'danger'
-                    }>
-                      {question.difficulty}
-                    </Badge>
-                    <Badge color="light" className="text-muted">
-                      {question.type.replace(/([A-Z])/g, ' $1').trim()}
-                    </Badge>
-                  </div>
-                  
-                  <CardTitle tag="h6" className="mb-2 text-truncate">
-                    {question.title}
-                  </CardTitle>
-                  
-                  <CardText className="text-muted small mb-3 flex-grow-1">
-                    {question.description.length > 100 
-                      ? question.description.substring(0, 100) + '...'
-                      : question.description
-                    }
-                  </CardText>
+          {filteredQuestions.map((question) => {
+            const typeConfig = QUESTION_TYPE_CONFIGS[question.type];
+            const categoryConfig = question.category ? CATEGORY_CONFIGS[question.category] : null;
+            const statusConfig = STATUS_CONFIGS[question.status];
+            const typeInfo = getTypeSpecificInfo(question);
+            const TypeIcon = typeConfig?.icon || FileText;
 
-                  {question.tags && question.tags.length > 0 && (
-                    <div className="mb-3">
-                      {question.tags.slice(0, 3).map(tag => (
-                        <Badge key={tag} color="secondary" className="me-1 mb-1 small text-white">
-                          {tag}
+            return (
+              <Col key={question._id} md={6} lg={4}>
+                <Card className="h-100 border-0 shadow-sm hover-shadow">
+                  <CardBody className="d-flex flex-column">
+                    {/* Header badges */}
+                    <div className="d-flex justify-content-between align-items-start mb-2">
+                      <div className="d-flex gap-1 flex-wrap">
+                        <Badge color={
+                          question.difficulty === 'easy' ? 'success' :
+                            question.difficulty === 'medium' ? 'warning' : 'danger'
+                        }>
+                          {question.difficulty}
                         </Badge>
-                      ))}
-                      {question.tags.length > 3 && (
-                        <Badge color="secondary" className="small text-white">
-                          +{question.tags.length - 3} more
+                        {categoryConfig && (
+                          <Badge color={categoryConfig.color} outline>
+                            {categoryConfig.label}
+                          </Badge>
+                        )}
+                        <Badge color={statusConfig.color} outline>
+                          {statusConfig.label}
                         </Badge>
-                      )}
+                      </div>
+                      <Badge color={typeConfig?.color || 'secondary'} className="d-flex align-items-center">
+                        <TypeIcon size={12} className="me-1" />
+                        {typeConfig?.label || question.type}
+                      </Badge>
                     </div>
-                  )}
-                  
-                  <div className="d-flex justify-content-between align-items-center mt-auto">
-                    <small className="text-muted">
-                      {question.language}
-                    </small>
-                    
-                    <ButtonGroup size="sm">
-                      <Button
-                        color="outline-primary"
-                        onClick={() => handleViewQuestion(question.id)}
-                      >
-                        <Eye className="icon-xs" />
-                      </Button>
-                      <Button
-                        color="outline-secondary"
-                        onClick={() => handleEditQuestion(question.id)}
-                      >
-                        <Edit className="icon-xs" />
-                      </Button>
-                      <Button
-                        color="outline-danger"
-                        onClick={() => handleDeleteQuestion(question.id, question.title)}
-                      >
-                        <Trash2 className="icon-xs" />
-                      </Button>
-                    </ButtonGroup>
-                  </div>
-                </CardBody>
-              </Card>
-            </Col>
-          ))}
+
+                    {/* Title */}
+                    <CardTitle tag="h6" className="mb-2 text-truncate" title={question.title}>
+                      {question.title}
+                    </CardTitle>
+
+                    {/* Description */}
+                    <CardText className="text-muted small mb-3 flex-grow-1">
+                      {question.description.length > 120
+                        ? question.description.substring(0, 120) + '...'
+                        : question.description
+                      }
+                    </CardText>
+
+                    {/* Type-specific info */}
+                    {typeInfo && (
+                      <div className="mb-2">
+                        <Badge color={typeInfo.color} outline className="d-flex align-items-center w-fit">
+                          <typeInfo.icon size={12} className="me-1" />
+                          {typeInfo.text}
+                        </Badge>
+                      </div>
+                    )}
+
+                    {/* Tags */}
+                    {question.tags && question.tags.length > 0 && (
+                      <div className="mb-3">
+                        {question.tags.slice(0, 3).map(tag => (
+                          <Badge key={tag} color="secondary" className="me-1 mb-1 small" style={{ fontSize: '0.7rem' }}>
+                            {tag}
+                          </Badge>
+                        ))}
+                        {question.tags.length > 3 && (
+                          <Badge color="secondary" className="small" style={{ fontSize: '0.7rem' }}>
+                            +{question.tags.length - 3}
+                          </Badge>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Footer */}
+                    <div className="d-flex justify-content-between align-items-center mt-auto">
+                      <small className="text-muted d-flex align-items-center">
+                        <Layers size={12} className="me-1" />
+                        {question.language}
+                      </small>
+
+                      <ButtonGroup size="sm">
+                        <Button
+                          color="outline-primary"
+                          onClick={() => handleViewQuestion(question._id)}
+                          title="View Question"
+                        >
+                          <Eye className="icon-xs" />
+                        </Button>
+                        <Button
+                          color="outline-secondary"
+                          onClick={() => handleEditQuestion(question._id)}
+                          title="Edit Question"
+                        >
+                          <Edit className="icon-xs" />
+                        </Button>
+                        <Button
+                          color="outline-danger"
+                          onClick={() => handleDeleteQuestion(question._id, question.title)}
+                          title="Delete Question"
+                        >
+                          <Trash2 className="icon-xs" />
+                        </Button>
+                      </ButtonGroup>
+                    </div>
+                  </CardBody>
+                </Card>
+              </Col>
+            );
+          })}
         </Row>
 
         {/* Empty State */}
@@ -424,14 +732,23 @@ const SkillQuestionsPage: React.FC = () => {
               <skill.icon className={`text-${skill.color} mb-3`} size={48} />
               <h5>No {skill.name} questions found</h5>
               <p className="text-muted mb-4">
-                {searchTerm || difficultyFilter !== 'all' || typeFilter !== 'all'
+                {searchTerm || difficultyFilter !== 'all' || typeFilter !== 'all' || categoryFilter !== 'all' || statusFilter !== 'all'
                   ? 'Try adjusting your filters or search terms.'
-                  : `Start building your ${skill.name} question bank.`
+                  : `Start building your ${skill.name} question bank with various question types.`
                 }
               </p>
+              {(searchTerm || difficultyFilter !== 'all' || typeFilter !== 'all' || categoryFilter !== 'all' || statusFilter !== 'all') && (
+                <Button
+                  color="outline-secondary"
+                  className="me-2"
+                  onClick={clearAllFilters}
+                >
+                  Clear Filters
+                </Button>
+              )}
               <Button color="success" onClick={handleCreateQuestion}>
                 <Plus className="me-2 icon-sm" />
-                Create First Question
+                Create Question
               </Button>
             </CardBody>
           </Card>
@@ -442,14 +759,14 @@ const SkillQuestionsPage: React.FC = () => {
           <div className="d-flex justify-content-center mt-4">
             <Pagination>
               <PaginationItem disabled={currentPage === 1}>
-                <PaginationLink 
+                <PaginationLink
                   onClick={() => handlePageChange(currentPage - 1)}
                   className="d-flex align-items-center"
                 >
                   <ChevronLeft className="icon-sm" />
                 </PaginationLink>
               </PaginationItem>
-              
+
               {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                 const page = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i;
                 return (
@@ -460,9 +777,9 @@ const SkillQuestionsPage: React.FC = () => {
                   </PaginationItem>
                 );
               })}
-              
+
               <PaginationItem disabled={currentPage === totalPages}>
-                <PaginationLink 
+                <PaginationLink
                   onClick={() => handlePageChange(currentPage + 1)}
                   className="d-flex align-items-center"
                 >
@@ -473,7 +790,7 @@ const SkillQuestionsPage: React.FC = () => {
           </div>
         )}
 
-        {/* Loading overlay for pagination */}
+        {/* Loading overlay */}
         {loading && questions.length > 0 && (
           <div className="text-center mt-3">
             <Spinner color="primary" size="sm" className="me-2" />
@@ -482,7 +799,7 @@ const SkillQuestionsPage: React.FC = () => {
         )}
       </Container>
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Modal */}
       <Modal isOpen={deleteModal} toggle={cancelDelete} centered>
         <ModalHeader toggle={cancelDelete} className="border-0 pb-0">
           <div className="d-flex align-items-center">
@@ -496,7 +813,7 @@ const SkillQuestionsPage: React.FC = () => {
         </ModalHeader>
         <ModalBody className="pt-2">
           <p className="mb-3">
-            Are you sure you want to delete the question:
+            Are you sure you want to delete this question?
           </p>
           <div className="p-3 bg-light rounded mb-3">
             <strong>"{questionToDelete?.title}"</strong>
@@ -509,15 +826,15 @@ const SkillQuestionsPage: React.FC = () => {
           </div>
         </ModalBody>
         <ModalFooter className="border-0 pt-0">
-          <Button 
-            color="secondary" 
+          <Button
+            color="secondary"
             onClick={cancelDelete}
             disabled={deleting}
           >
             Cancel
           </Button>
-          <Button 
-            color="danger" 
+          <Button
+            color="danger"
             onClick={confirmDelete}
             disabled={deleting}
             className="d-flex align-items-center"
@@ -536,6 +853,24 @@ const SkillQuestionsPage: React.FC = () => {
           </Button>
         </ModalFooter>
       </Modal>
+
+      {/* Styles */}
+      <style>{`
+        .hover-shadow {
+          transition: all 0.2s ease-in-out;
+        }
+        .hover-shadow:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+        }
+        .w-fit {
+          width: fit-content !important;
+        }
+        .icon-xs { width: 12px; height: 12px; }
+        .icon-sm { width: 16px; height: 16px; }
+        .icon-md { width: 20px; height: 20px; }
+        .icon-lg { width: 24px; height: 24px; }
+      `}</style>
     </div>
   );
 };

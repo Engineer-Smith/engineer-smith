@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import AppNavbar from "./components/Navbar";
 import LandingPage from "./pages/LandingPage";
 import AuthPage from "./pages/AuthPage";
@@ -15,6 +15,10 @@ import ViewQuestionPage from './pages/ViewQuestionPage';
 import QuestionFormComponent from './components/QuestionFormComponent';
 import TestManagementPage from './pages/TestManagementPage';
 import CreateTestPage from './pages/CreateTestPage';
+import FeaturesPage from './pages/FeaturesPage';
+import LanguagesPage from './pages/LanguagesPage';
+import ForOrganizationsPage from './pages/ForOrganizationsPage';
+import ForIndividualsPage from './pages/ForIndividualsPage';
 
 // ✅ NEW: Import test-related components
 import TestPreviewPage from './pages/TestPreviewPage';
@@ -25,7 +29,9 @@ import TestPreviewPage from './pages/TestPreviewPage';
 import TestDetailsPage from './pages/TestDetailsPage';
 import TestSessionPage from './pages/TestSessionPage';
 import { TestSessionProvider } from './context/TestSessionContext';
-// import TestResultsPage from './pages/TestResultsPage'; // You'll need to create this
+import TestResultsPage from './pages/TestResultsPage';
+import ResultDetailsPage from './pages/ResultDetailsPage';
+import { SocketProvider } from './context/SocketContext';
 
 // Placeholder components for missing pages
 const PlaceholderPage = ({ title }: { title: string }) => (
@@ -53,39 +59,129 @@ const PlaceholderPage = ({ title }: { title: string }) => (
   </div>
 );
 
-// Protected Route component
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { isAuthenticated, loading } = useAuth();
+// ✅ NEW: PublicRoute - Redirects authenticated users away from auth pages
+const PublicRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user, isAuthenticated, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
       <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
-        <div className="spinner-border text-primary" role="status">
-          <span className="visually-hidden">Loading...</span>
+        <div className="text-center">
+          <div className="spinner-border text-primary mb-3" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <p className="text-muted">Checking authentication...</p>
         </div>
       </div>
     );
   }
 
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
+  // If user is authenticated and trying to access auth pages, redirect them to appropriate dashboard
+  if (isAuthenticated && ['/login', '/register'].includes(location.pathname)) {
+    const defaultRoute = user?.role === 'admin' || user?.role === 'instructor'
+      ? '/admin'
+      : '/dashboard';
+    return <Navigate to={defaultRoute} replace />;
+  }
+
+  return <>{children}</>;
 };
 
-// Admin Route component - only allows admin and instructor roles
-const AdminRoute = ({ children }: { children: React.ReactNode }) => {
-  const { user, isAuthenticated, loading } = useAuth();
+// ✅ UPDATED: ProtectedRoute - Enhanced to remember where user was trying to go
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const { isAuthenticated, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
       <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
-        <div className="spinner-border text-primary" role="status">
-          <span className="visually-hidden">Loading...</span>
+        <div className="text-center">
+          <div className="spinner-border text-primary mb-3" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <p className="text-muted">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return isAuthenticated ? (
+    <>{children}</>
+  ) : (
+    <Navigate
+      to="/login"
+      state={{ from: location }}
+      replace
+    />
+  );
+};
+
+// ✅ NEW: SmartDashboardRoute - Redirects to role-appropriate dashboard
+const SmartDashboardRoute = () => {
+  const { user, isAuthenticated, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return (
+      <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
+        <div className="text-center">
+          <div className="spinner-border text-primary mb-3" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <p className="text-muted">Loading your dashboard...</p>
         </div>
       </div>
     );
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return (
+      <Navigate
+        to="/login"
+        state={{ from: location }}
+        replace
+      />
+    );
+  }
+
+  // Redirect based on user role
+  switch (user?.role) {
+    case 'admin':
+    case 'instructor':
+      return <Navigate to="/admin" replace />;
+    case 'student':
+    default:
+      return <Navigate to="/student-dashboard" replace />;
+  }
+};
+
+// ✅ UPDATED: AdminRoute - Enhanced with better role checking
+const AdminRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user, isAuthenticated, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return (
+      <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
+        <div className="text-center">
+          <div className="spinner-border text-primary mb-3" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <p className="text-muted">Checking permissions...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <Navigate
+        to="/login"
+        state={{ from: location }}
+        replace
+      />
+    );
   }
 
   if (user?.role !== 'admin' && user?.role !== 'instructor') {
@@ -95,22 +191,32 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
-// Student Route component - only allows students
+// StudentRoute component - only allows students
 const StudentRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, isAuthenticated, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
       <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
-        <div className="spinner-border text-primary" role="status">
-          <span className="visually-hidden">Loading...</span>
+        <div className="text-center">
+          <div className="spinner-border text-primary mb-3" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <p className="text-muted">Loading...</p>
         </div>
       </div>
     );
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return (
+      <Navigate
+        to="/login"
+        state={{ from: location }}
+        replace
+      />
+    );
   }
 
   if (user?.role !== 'student') {
@@ -120,7 +226,7 @@ const StudentRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
-// SSO Callback component
+// ✅ UPDATED: SSO Callback component - Uses smart dashboard route
 const SSOCallback = () => {
   const navigate = useNavigate();
 
@@ -130,7 +236,7 @@ const SSOCallback = () => {
     const error = urlParams.get('error');
 
     if (success === 'true') {
-      // SSO successful, navigate to dashboard without page reload
+      // SSO successful, navigate to smart dashboard route
       navigate('/dashboard', { replace: true });
     } else if (error) {
       // SSO failed, navigate to login with error parameter
@@ -157,23 +263,39 @@ function AppRoutes() {
   return (
     <div style={{ paddingTop: '80px' }}>
       <Routes>
-        {/* Public Routes */}
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/login" element={<AuthPage mode="login" />} />
-        <Route path="/register" element={<AuthPage mode="register" />} />
+        {/* Public Routes with Smart Redirects */}
+        <Route path="/" element={<PublicRoute><LandingPage /></PublicRoute>} />
+        <Route path="/login" element={<PublicRoute><AuthPage mode="login" /></PublicRoute>} />
+        <Route path="/register" element={<PublicRoute><AuthPage mode="register" /></PublicRoute>} />
         <Route path="/auth/callback" element={<SSOCallback />} />
 
-        {/* Protected Routes */}
+        <Route path="/features" element={<FeaturesPage />} />
+        <Route path="/languages" element={<LanguagesPage />} />
+        <Route path="/for-organizations" element={<ForOrganizationsPage />} />
+        <Route path="/for-individuals" element={<ForIndividualsPage />} />
+
+        {/* ✅ NEW: Smart Dashboard Route - Redirects based on role */}
+        <Route path="/dashboard" element={<SmartDashboardRoute />} />
+
+        {/* ✅ NEW: Specific Dashboard Routes */}
         <Route
-          path="/dashboard"
+          path="/admin"
           element={
-            <ProtectedRoute>
+            <AdminRoute>
+              <AdminDashboard />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/student-dashboard"
+          element={
+            <StudentRoute>
               <Dashboard />
-            </ProtectedRoute>
+            </StudentRoute>
           }
         />
 
-        {/* ✅ FIXED: Student Test Flow Routes - TestSessionProvider only wraps test-session */}
+        {/* ✅ UPDATED: Student Test Flow Routes - All use StudentRoute */}
         <Route
           path="/test-details/:testId"
           element={
@@ -183,12 +305,10 @@ function AppRoutes() {
           }
         />
         <Route
-          path="/test-session/:sessionId"
+          path="/test-session/:testId"
           element={
             <StudentRoute>
-              <TestSessionProvider>
-                <TestSessionPage />
-              </TestSessionProvider>
+              <TestSessionPage />
             </StudentRoute>
           }
         />
@@ -196,22 +316,38 @@ function AppRoutes() {
           path="/test-results/:sessionId"
           element={
             <StudentRoute>
-              <PlaceholderPage title="Test Results" />
+              <PlaceholderPage title="Test Results Summary" />
             </StudentRoute>
           }
         />
 
-        {/* Admin Dashboard - Main admin landing page */}
+        {/* ✅ UPDATED: Student Routes - Use StudentRoute guard */}
         <Route
-          path="/admin"
+          path="/tests"
           element={
-            <AdminRoute>
-              <AdminDashboard />
-            </AdminRoute>
+            <StudentRoute>
+              <PlaceholderPage title="Available Tests" />
+            </StudentRoute>
+          }
+        />
+        <Route
+          path="/results"
+          element={
+            <StudentRoute>
+              <TestResultsPage />
+            </StudentRoute>
+          }
+        />
+        <Route
+          path="/result-details/:resultId"
+          element={
+            <StudentRoute>
+              <ResultDetailsPage />
+            </StudentRoute>
           }
         />
 
-        {/* Admin Management Routes */}
+        {/* Admin Management Routes - All use AdminRoute */}
         <Route
           path="/admin/users"
           element={
@@ -381,23 +517,7 @@ function AppRoutes() {
           }
         />
 
-        {/* Student Routes - Keep existing ones */}
-        <Route
-          path="/tests"
-          element={
-            <ProtectedRoute>
-              <PlaceholderPage title="Available Tests" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/results"
-          element={
-            <ProtectedRoute>
-              <PlaceholderPage title="My Test Results" />
-            </ProtectedRoute>
-          }
-        />
+        {/* ✅ UPDATED: Profile/Settings - Use ProtectedRoute for all roles */}
         <Route
           path="/profile"
           element={
@@ -438,14 +558,18 @@ function AppRoutes() {
 
 function App() {
   return (
-    <AuthProvider>
-      <Router>
-        <div>
-          <AppNavbar />
-          <AppRoutes />
-        </div>
-      </Router>
-    </AuthProvider>
+    <Router>
+      <AuthProvider>
+        <SocketProvider>
+          <TestSessionProvider>
+            <div>
+              <AppNavbar />
+              <AppRoutes />
+            </div>
+          </TestSessionProvider>
+        </SocketProvider>
+      </AuthProvider>
+    </Router>
   );
 }
 

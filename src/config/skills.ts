@@ -64,11 +64,12 @@ export const skills: Skill[] = [
     color: "secondary"
   },
   { 
-    name: "Flutter", 
+    name: "Flutter/Dart", 
     skill: "flutter", 
-    description: "Questions about Flutter app development.",
+    description: "Questions about Flutter app development and Dart programming.",
     icon: Smartphone,
-    color: "info"
+    color: "info",
+    subCategories: ["flutter", "dart"] // Both languages combined in UI
   },
   { 
     name: "Backend", 
@@ -76,7 +77,7 @@ export const skills: Skill[] = [
     description: "Questions about server-side development.",
     icon: Server,
     color: "dark",
-    subCategories: ["express", "python"] // ✅ Add sub-categories for filtering
+    subCategories: ["express", "python"] 
   },
   { 
     name: "Database", 
@@ -97,7 +98,7 @@ export const skills: Skill[] = [
 // Helper function to get count for a skill (handles backend aggregation)
 export const getSkillCount = (skill: Skill, languageStats: Array<{language: string, count: number}>) => {
   if (skill.subCategories) {
-    // For skills with sub-categories (like backend), sum them up
+    // For skills with sub-categories, sum them up
     return skill.subCategories.reduce((total, subCat) => {
       const stat = languageStats.find(s => s.language === subCat);
       return total + (stat?.count || 0);
@@ -107,4 +108,4 @@ export const getSkillCount = (skill: Skill, languageStats: Array<{language: stri
     const stat = languageStats.find(s => s.language === skill.skill);
     return stat?.count || 0;
   }
-};
+};4

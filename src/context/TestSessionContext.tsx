@@ -1,161 +1,78 @@
-// src/context/TestSessionContext.tsx - COMPLETE VERSION WITH TIMER SYNC
-import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef, useMemo, useState } from 'react';
-import { useTestSessionAPI, useTimer, useAutoSave, useNetworkStatus } from '../hooks/useTestSessionHooks';
-
-// Import your existing types
-import type { TestSession, Test } from '../types';
+// src/context/TestSessionContext.tsx - FIXED for hybrid timer approach
+import React, { createContext, useContext, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-toastify';
+import { useSocket } from './SocketContext';
+import { useTestSessionTimers } from '../hooks/testSession/useTestSessionTimers';
+import apiService from '../services/ApiService';
+import socketService from '../services/SocketService';
+import type {
+  ServerActionResponse,
+  NavigationContext,
+  SessionFinalScore,
+  StartSessionResponse,
+  StartSessionConflictResponse,
+  CurrentQuestionResponse,
+  CheckExistingSessionResponse,
+  RejoinSessionResponse,
+  SubmitAnswerRequest,
+  QuestionData,
+  QuestionStatus
+} from '../types';
 
 interface TestSessionState {
-  // Session data
-  testSession: TestSession | null;
-  test: Test | null;
-
-  // UI state
+  sessionId: string | null;
+  initialized: boolean;
+  questionState: {
+    questionIndex: number;
+    questionData: QuestionData;
+    currentAnswer: any;
+    status: QuestionStatus;
+    timeSpent: number;
+    viewCount: number;
+    isReviewPhase?: boolean;
+    skippedQuestionsRemaining?: number;
+  } | null;
+  navigationContext: NavigationContext | null;
+  sessionInfo: {
+    title: string;
+    description: string;
+    totalQuestions: number;
+    totalPoints: number;
+    timeLimit: number;
+    useSections: boolean;
+    sectionCount: number;
+  } | null;
   loading: boolean;
   error: string | null;
   submitting: boolean;
-
-  // Test taking state
-  currentQuestionIndex: number;
-  currentSectionIndex: number;
-  answers: Record<string, any>;
-  flaggedQuestions: Set<number>;
-
-  // Auto-save state
-  lastSaved: number;
-  autoSaveStatus: 'saved' | 'saving' | 'error';
+  currentAnswer: any;
   hasUnsavedChanges: boolean;
-
-  // Network state
-  isOnline: boolean;
-}
-
-type TestSessionAction =
-  | { type: 'INITIALIZE_SESSION'; payload: { testSession: TestSession; test: Test } }
-  | { type: 'SET_LOADING'; payload: boolean }
-  | { type: 'SET_ERROR'; payload: string | null }
-  | { type: 'SET_SUBMITTING'; payload: boolean }
-  | { type: 'UPDATE_ANSWER'; payload: { questionId: string; answer: any } }
-  | { type: 'TOGGLE_FLAG'; payload: number }
-  | { type: 'NAVIGATE_QUESTION'; payload: number }
-  | { type: 'NAVIGATE_SECTION'; payload: number }
-  | { type: 'SET_AUTO_SAVE_STATUS'; payload: 'saved' | 'saving' | 'error' }
-  | { type: 'MARK_SAVED' }
-  | { type: 'SET_ONLINE_STATUS'; payload: boolean }
-  | { type: 'RESET_SESSION' };
-
-const initialState: TestSessionState = {
-  testSession: null,
-  test: null,
-  loading: true,
-  error: null,
-  submitting: false,
-  currentQuestionIndex: 0,
-  currentSectionIndex: 0,
-  answers: {},
-  flaggedQuestions: new Set(),
-  lastSaved: Date.now(),
-  autoSaveStatus: 'saved',
-  hasUnsavedChanges: false,
-  isOnline: navigator.onLine
-};
-
-function testSessionReducer(state: TestSessionState, action: TestSessionAction): TestSessionState {
-  switch (action.type) {
-    case 'INITIALIZE_SESSION': {
-      const { testSession, test } = action.payload;
-      return {
-        ...state,
-        testSession,
-        test,
-        loading: false,
-        error: null
-      };
-    }
-
-    case 'SET_LOADING':
-      return { ...state, loading: action.payload };
-
-    case 'SET_ERROR':
-      return { ...state, error: action.payload, loading: false };
-
-    case 'SET_SUBMITTING':
-      return { ...state, submitting: action.payload };
-
-    case 'UPDATE_ANSWER': {
-      const { questionId, answer } = action.payload;
-      const newAnswers = { ...state.answers, [questionId]: answer };
-      return {
-        ...state,
-        answers: newAnswers,
-        hasUnsavedChanges: true,
-        autoSaveStatus: 'saving'
-      };
-    }
-
-    case 'TOGGLE_FLAG': {
-      const questionIndex = action.payload;
-      const newFlagged = new Set(state.flaggedQuestions);
-      if (newFlagged.has(questionIndex)) {
-        newFlagged.delete(questionIndex);
-      } else {
-        newFlagged.add(questionIndex);
-      }
-      return {
-        ...state,
-        flaggedQuestions: newFlagged,
-        hasUnsavedChanges: true
-      };
-    }
-
-    case 'NAVIGATE_QUESTION':
-      return { ...state, currentQuestionIndex: action.payload };
-
-    case 'NAVIGATE_SECTION':
-      return { ...state, currentSectionIndex: action.payload };
-
-    case 'SET_AUTO_SAVE_STATUS':
-      return { ...state, autoSaveStatus: action.payload };
-
-    case 'MARK_SAVED':
-      return {
-        ...state,
-        lastSaved: Date.now(),
-        autoSaveStatus: 'saved',
-        hasUnsavedChanges: false
-      };
-
-    case 'SET_ONLINE_STATUS':
-      return { ...state, isOnline: action.payload };
-
-    case 'RESET_SESSION':
-      return initialState;
-
-    default:
-      return state;
-  }
+  questionStartTime: number | null;
+  finalScore: SessionFinalScore | null;
+  isCompleted: boolean;
+  // REMOVED: timeRemaining - now handled by socket/hybrid timer
 }
 
 interface TestSessionContextValue {
   state: TestSessionState;
-  timerState: {
-    timeRemaining: number;
-    sectionTimeRemaining?: number;
-    isTimerInitialized: boolean;
-  };
-  actions: {
-    initializeSession: (sessionId: string) => Promise<void>;
-    updateAnswer: (questionId: string, answer: any) => void;
-    toggleFlag: (questionIndex: number) => void;
-    navigateToQuestion: (index: number) => void;
-    navigateToSection: (index: number) => void;
-    submitCurrentSection: () => Promise<any>;
-    submitTest: () => Promise<void>;
-    abandonTest: () => Promise<void>;
-    saveProgress: () => Promise<void>;
-    resetSession: () => void;
-    syncTime: () => Promise<void>;
-  };
+  checkExistingSession: () => Promise<CheckExistingSessionResponse>;
+  startSession: (testId: string, forceNew?: boolean) => Promise<void>;
+  rejoinSession: (sessionId: string) => Promise<void>;
+  updateAnswer: (answer: any) => void;
+  submitAnswer: () => Promise<void>;
+  skipQuestion: (reason?: string) => Promise<void>;
+  submitTest: (forceSubmit?: boolean) => Promise<void>;
+  abandonTest: () => Promise<void>;
+  submitWithSkipped: () => Promise<void>;
+  continueAnswering: () => Promise<void>;
+  resetSession: () => void;
+  refreshQuestion: () => Promise<void>;
+  requestTimerSync: () => Promise<void>;
+  formatTimeRemaining: () => string;
+  timerDisplay: ReturnType<typeof useTestSessionTimers>;
+  networkStatus: ReturnType<typeof useSocket>['networkStatus'];
+  connectionStatus: ReturnType<typeof useSocket>['connectionStatus'];
 }
 
 const TestSessionContext = createContext<TestSessionContextValue | null>(null);
@@ -168,400 +85,672 @@ export const useTestSession = () => {
   return context;
 };
 
-interface TestSessionProviderProps {
-  children: React.ReactNode;
-}
+export const TestSessionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const navigate = useNavigate();
+  const { timerState, networkStatus, connectionStatus, registerEventHandlers, joinSession, leaveSession } = useSocket();
 
-export const TestSessionProvider: React.FC<TestSessionProviderProps> = ({ children }) => {
-  const [state, dispatch] = useReducer(testSessionReducer, initialState);
+  // Track initial timer value for hybrid hook
+  const [initialTimerValue, setInitialTimerValue] = React.useState<number | null>(null);
 
-  // Timer adjustment state for server sync
-  const [timerAdjustment, setTimerAdjustment] = useState(0);
+  const [state, setState] = React.useState<TestSessionState>({
+    sessionId: null,
+    initialized: false,
+    questionState: null,
+    navigationContext: null,
+    sessionInfo: null,
+    loading: false,
+    error: null,
+    submitting: false,
+    currentAnswer: null,
+    hasUnsavedChanges: false,
+    questionStartTime: null,
+    finalScore: null,
+    isCompleted: false,
+  });
 
-  // Use our custom hooks
-  const api = useTestSessionAPI();
-  const { isOnline } = useNetworkStatus();
+  const questionStartTimeRef = useRef<number | null>(null);
+  const socketCleanupRef = useRef<(() => void) | null>(null);
 
-  // Add request tracking to prevent double calls in React Strict Mode
-  const isRequestInProgress = useRef(false);
-  const hasSessionLoaded = useRef(false);
+  // FIXED: Timer hook now gets initial value from API responses
+  const timerDisplay = useTestSessionTimers(initialTimerValue);
 
-  // Calculate initial time with server adjustment
-  const initialTime = useMemo(() => {
-    if (!state.testSession || !state.test) return null;
+  // SIMPLIFIED: Timer formatting comes from hybrid hook
+  const formatTimeRemaining = useCallback((): string => {
+    return timerDisplay.formatTimeRemaining();
+  }, [timerDisplay]);
 
-    const startTime = new Date(state.testSession.startedAt).getTime();
-    const elapsed = Math.floor((Date.now() - startTime) / 1000);
-    const timeLimit = state.test.settings.timeLimit * 60;
-    const calculatedTime = Math.max(0, timeLimit - elapsed + timerAdjustment);
-
-    console.log('Timer calculation:', {
-      startTime: new Date(state.testSession.startedAt),
-      elapsed,
-      timeLimit,
-      timerAdjustment,
-      calculatedTime
+  // Navigation helper
+  const navigateToResults = useCallback((sessionId: string, finalScore?: SessionFinalScore, options?: any) => {
+    navigate('/results', {
+      state: {
+        sessionId,
+        finalScore,
+        completedAt: new Date().toISOString(),
+        ...options
+      }
     });
+  }, [navigate]);
 
-    return calculatedTime;
-  }, [state.testSession, state.test, timerAdjustment]);
-
-  // Auto-submit when timer expires
-  const handleTimerExpire = useCallback(async () => {
-    console.log('Timer expired - auto-submitting');
-
-    if (!state.testSession || state.submitting) return;
+  // UTILITIES
+  const refreshQuestion = useCallback(async () => {
+    if (!state.sessionId) return;
 
     try {
-      dispatch({ type: 'SET_SUBMITTING', payload: true });
+      const response: CurrentQuestionResponse = await apiService.getCurrentQuestion(state.sessionId);
 
-      const totalTimeSpent = state.testSession.timeSpent +
-        (Date.now() - new Date(state.testSession.startedAt).getTime()) / 1000;
-
-      await api.submitSession(state.testSession.id, {
-        answers: state.answers,
-        timeSpent: totalTimeSpent,
-        status: 'expired',
-        questions: state.testSession.questions
-      });
-
-    } catch (error: any) {
-      console.error('Failed to auto-submit test:', error);
-      dispatch({ type: 'SET_ERROR', payload: error.message });
-    } finally {
-      dispatch({ type: 'SET_SUBMITTING', payload: false });
-    }
-  }, [state.testSession, state.submitting, state.answers, api]);
-
-  // Main timer using improved hook
-  const { timeRemaining, isInitialized, stopTimer: stopMainTimer } = useTimer(
-    initialTime,
-    handleTimerExpire,
-    !isOnline // Pause when offline
-  );
-
-  // Server time synchronization function
-  const syncWithServer = useCallback(async () => {
-  // Add more robust validation
-  if (!state.testSession || !state.test || !state.testSession.id) {
-    console.warn('Cannot sync: missing session data', {
-      hasSession: !!state.testSession,
-      hasTest: !!state.test,
-      sessionId: state.testSession?.id
-    });
-    return;
-  }
-
-  // Additional check for valid ObjectId format
-  if (typeof state.testSession.id !== 'string' || state.testSession.id === 'undefined' || state.testSession.id.length !== 24) {
-    console.error('Invalid session ID format:', state.testSession.id);
-    return;
-  }
-
-  try {
-    console.log('Performing time sync with sessionId:', state.testSession.id);
-    const syncData = await api.syncTime(state.testSession.id);
-
-    if (!syncData) {
-      console.warn('Sync data is undefined, skipping sync');
-      return;
-    }
-
-    // ... rest of sync logic
-  } catch (error) {
-    console.warn('Timer sync failed:', error);
-  }
-}, [state.testSession, state.test, timeRemaining, api.syncTime]);
-
-  // Timer sync effect - runs after session loads and periodically
-  useEffect(() => {
-    if (!state.testSession || !state.test || !isInitialized) {
-      return;
-    }
-
-    // Perform initial sync after timer has stabilized (3 seconds)
-    const initialSyncTimer = setTimeout(() => {
-      syncWithServer();
-    }, 3000);
-
-    // Set up periodic sync every 2 minutes
-    const periodicSyncInterval = setInterval(() => {
-      syncWithServer();
-    }, 120000);
-
-    return () => {
-      clearTimeout(initialSyncTimer);
-      clearInterval(periodicSyncInterval);
-    };
-  }, [state.testSession, state.test, isInitialized, syncWithServer]);
-
-  // Section timer (if sections are used)
-  const getSectionTimeLimit = useCallback(() => {
-    if (!state.test?.settings.useSections || !state.test.sections) return null;
-    const currentSection = state.test.sections[state.currentSectionIndex];
-    return currentSection ? currentSection.timeLimit * 60 : null;
-  }, [state.test, state.currentSectionIndex]);
-
-  const handleSectionTimeExpire = useCallback(() => {
-    console.log('Section timer expired');
-    // Could auto-submit section or show warning
-  }, []);
-
-  const { timeRemaining: sectionTimeRemaining, isInitialized: sectionTimerInitialized } = useTimer(
-    getSectionTimeLimit(),
-    handleSectionTimeExpire,
-    !state.test?.settings.useSections || !isOnline
-  );
-
-  // Define submitTest to avoid circular dependency
-  const submitTest = useCallback(async () => {
-    if (!state.testSession || state.submitting) return;
-
-    try {
-      dispatch({ type: 'SET_SUBMITTING', payload: true });
-
-      const totalTimeSpent = state.testSession.timeSpent +
-        (Date.now() - new Date(state.testSession.startedAt).getTime()) / 1000;
-
-      await api.submitSession(state.testSession.id, {
-        answers: state.answers,
-        timeSpent: totalTimeSpent,
-        status: 'completed', // Manual submission
-        questions: state.testSession.questions
-      });
-
-    } catch (error: any) {
-      console.error('Failed to submit test:', error);
-      dispatch({ type: 'SET_ERROR', payload: error.message });
-    } finally {
-      dispatch({ type: 'SET_SUBMITTING', payload: false });
-    }
-  }, [state.testSession, state.answers, state.submitting, api]);
-
-  // Create save function for auto-save hook
-  const saveFunction = useCallback(async () => {
-    if (!state.testSession) return;
-
-    dispatch({ type: 'SET_AUTO_SAVE_STATUS', payload: 'saving' });
-
-    try {
-      await api.saveProgress(state.testSession.id, {
-        answers: state.answers,
-        flaggedQuestions: Array.from(state.flaggedQuestions),
-        currentQuestionIndex: state.currentQuestionIndex,
-        timeSpent: state.testSession.timeSpent + (Date.now() - new Date(state.testSession.startedAt).getTime()) / 1000,
-        questions: state.testSession.questions
-      });
-
-      dispatch({ type: 'MARK_SAVED' });
-    } catch (error: any) {
-      console.error('Failed to save progress:', error);
-      dispatch({ type: 'SET_AUTO_SAVE_STATUS', payload: 'error' });
-    }
-  }, [state.testSession, state.answers, state.flaggedQuestions, state.currentQuestionIndex, api]);
-
-  // Auto-save using our custom hook with stable data
-  const autoSaveData = useMemo(() => ({
-    answers: state.answers,
-    flaggedQuestions: Array.from(state.flaggedQuestions)
-  }), [state.answers, state.flaggedQuestions]);
-
-  const { saveStatus, manualSave } = useAutoSave(
-    saveFunction,
-    autoSaveData,
-    30000 // 30 seconds
-  );
-
-  // Sync network status
-  useEffect(() => {
-    dispatch({ type: 'SET_ONLINE_STATUS', payload: isOnline });
-  }, [isOnline]);
-
-  // Sync auto-save status only when it actually changes
-  const prevSaveStatusRef = useRef(saveStatus);
-  useEffect(() => {
-    if (prevSaveStatusRef.current !== saveStatus) {
-      prevSaveStatusRef.current = saveStatus;
-      dispatch({ type: 'SET_AUTO_SAVE_STATUS', payload: saveStatus });
-    }
-  }, [saveStatus]);
-
-  // Add request tracking to prevent double calls
-  const initializeSession = useCallback(async (sessionId: string) => {
-    // Prevent concurrent requests
-    if (isRequestInProgress.current) {
-      console.log('TestSessionContext: Request already in progress, skipping...');
-      return;
-    }
-
-    if (hasSessionLoaded.current && state.testSession?.id === sessionId) {
-      console.log('TestSessionContext: Session already loaded, skipping...');
-      return;
-    }
-
-    isRequestInProgress.current = true;
-
-    try {
-      dispatch({ type: 'SET_LOADING', payload: true });
-      dispatch({ type: 'SET_ERROR', payload: null });
-
-      console.log('TestSessionContext: Initializing session:', sessionId);
-      const { testSession, test } = await api.initializeSession(sessionId);
-
-      dispatch({
-        type: 'INITIALIZE_SESSION',
-        payload: { testSession, test }
-      });
-
-      hasSessionLoaded.current = true;
-
-    } catch (error: any) {
-      console.error('Failed to initialize session:', error);
-      dispatch({ type: 'SET_ERROR', payload: error.message });
-    } finally {
-      isRequestInProgress.current = false;
-    }
-  }, [api, state.testSession]);
-
-  const updateAnswer = useCallback((questionId: string, answer: any) => {
-    dispatch({ type: 'UPDATE_ANSWER', payload: { questionId, answer } });
-  }, []);
-
-  const toggleFlag = useCallback((questionIndex: number) => {
-    dispatch({ type: 'TOGGLE_FLAG', payload: questionIndex });
-  }, []);
-
-  const navigateToQuestion = useCallback((index: number) => {
-    dispatch({ type: 'NAVIGATE_QUESTION', payload: index });
-  }, []);
-
-  const navigateToSection = useCallback((index: number) => {
-    dispatch({ type: 'NAVIGATE_SECTION', payload: index });
-  }, []);
-
-  const submitCurrentSection = useCallback(async () => {
-    if (!state.testSession || !state.test?.settings.useSections || state.submitting) return;
-
-    const currentSection = state.currentSectionIndex;
-
-    // Check if section already completed
-    if (state.testSession.completedSections.includes(currentSection)) {
-      dispatch({ type: 'SET_ERROR', payload: 'This section has already been submitted' });
-      return;
-    }
-
-    try {
-      dispatch({ type: 'SET_SUBMITTING', payload: true });
-
-      const totalTimeSpent = state.testSession.timeSpent +
-        (Date.now() - new Date(state.testSession.startedAt).getTime()) / 1000;
-
-      const result = await api.submitSection(state.testSession.id, {
-        sectionIndex: currentSection,
-        answers: state.answers,
-        questions: state.testSession.questions,
-        timeSpent: totalTimeSpent
-      });
-
-      if (result.error) {
-        throw new Error(result.message || 'Failed to submit section');
+      if (!response.success) {
+        throw new Error('Failed to refresh question');
       }
 
-      // Update completed sections
-      const newTestSession = {
-        ...state.testSession,
-        completedSections: [...state.testSession.completedSections, currentSection]
+      setState(prev => ({
+        ...prev,
+        questionState: response.questionState,
+        navigationContext: response.navigationContext,
+        sessionInfo: response.sessionInfo,
+        currentAnswer: response.questionState.currentAnswer,
+        hasUnsavedChanges: false,
+      }));
+
+      // FIXED: Set initial timer value for hybrid hook
+      if (response.timeRemaining !== undefined) {
+        setInitialTimerValue(response.timeRemaining);
+      }
+
+      questionStartTimeRef.current = Date.now();
+
+    } catch (error: any) {
+      setState(prev => ({ ...prev, error: error.message }));
+    }
+  }, [state.sessionId]);
+
+  // Timer sync request
+  const requestTimerSync = useCallback(async () => {
+    if (!state.sessionId || !socketService.isConnected()) return;
+
+    try {
+      await socketService.requestTimerSync(state.sessionId);
+    } catch (error: any) {
+      console.warn('Failed to request timer sync:', error);
+    }
+  }, [state.sessionId]);
+
+  const resetSessionState = useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      sessionId: null,
+      initialized: false,
+      questionState: null,
+      navigationContext: null,
+      sessionInfo: null,
+      currentAnswer: null,
+      hasUnsavedChanges: false,
+      loading: false,
+      submitting: false,
+      error: null
+    }));
+
+    setInitialTimerValue(null);
+    questionStartTimeRef.current = null;
+  }, []);
+
+  // SERVER RESPONSE HANDLER WITH NAVIGATION
+  const handleServerResponse = useCallback(async (response: any) => {
+    // Always reset submitting state first
+    setState(prev => ({ ...prev, submitting: false }));
+
+    if (!response.success) {
+      setState(prev => ({ ...prev, error: response.message || 'Server action failed' }));
+      return;
+    }
+
+    const actionType = response.action || response.type;
+    const questionState = response.questionState;
+    const navigationContext = response.navigationContext;
+
+    switch (actionType) {
+      case 'next_question':
+      case 'advance_to_next_question':
+        if (questionState && navigationContext) {
+          setState(prev => ({
+            ...prev,
+            questionState: questionState,
+            navigationContext: navigationContext,
+            currentAnswer: questionState.currentAnswer,
+            hasUnsavedChanges: false,
+            error: null,
+          }));
+          questionStartTimeRef.current = Date.now();
+          toast.success('Next question loaded');
+        } else {
+          setState(prev => ({
+            ...prev,
+            error: 'Failed to load next question - missing data'
+          }));
+        }
+        break;
+
+      case 'section_transition':
+      case 'advance_to_next_section':
+        if (questionState && navigationContext) {
+          setState(prev => ({
+            ...prev,
+            questionState: questionState,
+            navigationContext: navigationContext,
+            currentAnswer: questionState.currentAnswer,
+            hasUnsavedChanges: false,
+            error: null,
+          }));
+          questionStartTimeRef.current = Date.now();
+
+          const sectionName = response.newSection?.name || navigationContext.currentSection?.name;
+          toast.info(response.message || `Moved to ${sectionName}`);
+        } else {
+          setState(prev => ({
+            ...prev,
+            error: 'Failed to load section transition - missing data'
+          }));
+        }
+        break;
+
+      case 'review_phase_started':
+      case 'start_review_phase':
+        if (questionState && navigationContext) {
+          setState(prev => ({
+            ...prev,
+            questionState: questionState,
+            navigationContext: navigationContext,
+            currentAnswer: questionState.currentAnswer,
+            hasUnsavedChanges: false,
+            error: null,
+          }));
+          questionStartTimeRef.current = Date.now();
+          toast.info(response.message || 'Starting review of skipped questions');
+        } else {
+          setState(prev => ({
+            ...prev,
+            error: 'Failed to start review phase - missing data'
+          }));
+        }
+        break;
+
+      case 'next_review_question':
+      case 'advance_in_review':
+        if (questionState && navigationContext) {
+          setState(prev => ({
+            ...prev,
+            questionState: questionState,
+            navigationContext: navigationContext,
+            currentAnswer: questionState.currentAnswer,
+            hasUnsavedChanges: false,
+            error: null,
+          }));
+          questionStartTimeRef.current = Date.now();
+          toast.info(response.message || 'Next review question');
+        } else {
+          setState(prev => ({
+            ...prev,
+            error: 'Failed to load review question - missing data'
+          }));
+        }
+        break;
+
+      case 'test_completed_confirmation':
+      case 'test_completion':
+        const finalScore = response.finalScore || response.submissionResult?.finalScore;
+
+        if (finalScore) {
+          setState(prev => ({
+            ...prev,
+            finalScore: finalScore,
+            isCompleted: true,
+            error: null,
+          }));
+
+          const currentSessionId = state.sessionId;
+          
+          if (currentSessionId) {
+            leaveSession(currentSessionId);
+            
+            setTimeout(() => {
+              resetSessionState();
+              navigateToResults(currentSessionId, finalScore, {
+                confirmationData: response.confirmationData
+              });
+            }, 2000);
+          }
+
+          toast.success(response.message || 'Test completed successfully! Redirecting to results...', {
+            autoClose: 2000
+          });
+        }
+        break;
+
+      case 'test_completed_with_error':
+        setState(prev => ({
+          ...prev,
+          error: response.message || response.error || 'Test completed with errors',
+          isCompleted: true,
+        }));
+
+        const errorSessionId = state.sessionId;
+        
+        if (errorSessionId) {
+          leaveSession(errorSessionId);
+          
+          setTimeout(() => {
+            resetSessionState();
+            navigateToResults(errorSessionId, undefined, {
+              error: response.message || response.error,
+              requiresManualSubmission: response.requiresManualSubmission
+            });
+          }, 3000);
+        }
+
+        toast.error(response.message || 'Test completed but submission failed. Redirecting to results...', {
+          autoClose: 3000
+        });
+        break;
+
+      default:
+        // Try to handle any response that has question data
+        if (questionState && navigationContext) {
+          setState(prev => ({
+            ...prev,
+            questionState: questionState,
+            navigationContext: navigationContext,
+            currentAnswer: questionState.currentAnswer,
+            hasUnsavedChanges: false,
+            error: null,
+          }));
+          questionStartTimeRef.current = Date.now();
+          toast.info('Question updated');
+        } else {
+          setState(prev => ({
+            ...prev,
+            error: `Unknown server response: ${actionType}`
+          }));
+        }
+        break;
+    }
+  }, [state.sessionId, leaveSession, resetSessionState, navigateToResults]);
+
+  // SOCKET EVENT HANDLERS - SIMPLIFIED (timer handled by socket context)
+  useEffect(() => {
+    if (!state.sessionId) return;
+
+    const cleanup = registerEventHandlers({
+      // REMOVED: onTimerSync - socket context handles timer countdown
+
+      onSectionExpired: (data) => {
+        toast.info(data.message);
+      },
+
+      onTestCompleted: (data) => {
+        const finalScore = data.result?.finalScore || data.result;
+        const currentSessionId = state.sessionId;
+
+        setState(prev => ({
+          ...prev,
+          finalScore: finalScore,
+          isCompleted: true,
+          submitting: false,
+        }));
+
+        if (currentSessionId) {
+          leaveSession(currentSessionId);
+          
+          setTimeout(() => {
+            resetSessionState();
+            if (finalScore) {
+              navigateToResults(currentSessionId, finalScore, { socketCompleted: true });
+            } else {
+              navigateToResults(currentSessionId, undefined, { socketCompleted: true });
+            }
+          }, 2000);
+        }
+
+        toast.success(data.message + ' Redirecting to results...', {
+          autoClose: 2000
+        });
+      },
+
+      onSessionError: (data) => {
+        setState(prev => ({ ...prev, error: data.message }));
+        toast.error(data.message);
+      },
+    });
+
+    socketCleanupRef.current = cleanup;
+    return cleanup;
+  }, [state.sessionId, registerEventHandlers, leaveSession, resetSessionState, navigateToResults]);
+
+  // SESSION MANAGEMENT
+  const checkExistingSession = useCallback(async (): Promise<CheckExistingSessionResponse> => {
+    const response: CheckExistingSessionResponse = await apiService.checkExistingSession();
+
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to check existing session');
+    }
+
+    return response;
+  }, []);
+
+  const startSession = useCallback(async (testId: string, forceNew = false) => {
+    try {
+      setState(prev => ({ ...prev, loading: true, error: null }));
+
+      const response: StartSessionResponse = await apiService.startTestSession({ testId, forceNew });
+
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to start test session');
+      }
+
+      // FIXED: Set initial timer value for hybrid hook
+      if (response.question.timeRemaining !== undefined) {
+        setInitialTimerValue(response.question.timeRemaining);
+      }
+
+      setState(prev => ({
+        ...prev,
+        sessionId: response.session.sessionId,
+        initialized: true,
+        questionState: response.question.questionState,
+        navigationContext: response.question.navigationContext,
+        sessionInfo: response.question.sessionInfo,
+        currentAnswer: response.question.questionState.currentAnswer,
+        loading: false,
+      }));
+
+      questionStartTimeRef.current = Date.now();
+
+      await joinSession(response.session.sessionId);
+
+      toast.success(response.message || 'Test session started successfully');
+
+    } catch (error: any) {
+      if (error.code === 'EXISTING_SESSION_FOUND' && error.existingSession) {
+        setState(prev => ({ ...prev, loading: false }));
+        const conflictError = {
+          type: 'EXISTING_SESSION_CONFLICT',
+          data: {
+            success: false as const,
+            error: error.error,
+            code: error.code as 'EXISTING_SESSION_FOUND',
+            existingSession: error.existingSession
+          } as StartSessionConflictResponse
+        };
+        throw conflictError;
+      }
+
+      setState(prev => ({ ...prev, loading: false, error: error.message }));
+      throw error;
+    }
+  }, [joinSession]);
+
+  // FIXED: Rejoin session with initial timer value
+  const rejoinSession = useCallback(async (sessionId: string) => {
+    try {
+      setState(prev => ({ ...prev, loading: true, error: null }));
+
+      const response: RejoinSessionResponse = await apiService.rejoinTestSession(sessionId);
+
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to rejoin session');
+      }
+
+      // FIXED: Set initial timer value for hybrid hook
+      if (response.question.timeRemaining !== undefined) {
+        setInitialTimerValue(response.question.timeRemaining);
+      }
+
+      setState(prev => ({
+        ...prev,
+        sessionId: response.session.sessionId,
+        initialized: true,
+        questionState: response.question.questionState,
+        navigationContext: response.question.navigationContext,
+        sessionInfo: response.question.sessionInfo,
+        currentAnswer: response.question.questionState.currentAnswer,
+        loading: false,
+      }));
+
+      questionStartTimeRef.current = Date.now();
+
+      await joinSession(response.session.sessionId);
+
+      // Request additional timer sync for accuracy
+      setTimeout(() => {
+        requestTimerSync();
+      }, 1000);
+
+      toast.success(response.message || 'Successfully rejoined test session');
+
+    } catch (error: any) {
+      setState(prev => ({ ...prev, loading: false, error: error.message }));
+      throw error;
+    }
+  }, [joinSession, requestTimerSync]);
+
+  // ANSWER MANAGEMENT
+  const updateAnswer = useCallback((answer: any) => {
+    setState(prev => ({
+      ...prev,
+      currentAnswer: answer,
+      hasUnsavedChanges: true,
+    }));
+  }, []);
+
+  const submitAnswer = useCallback(async () => {
+    if (!state.sessionId || state.submitting) return;
+
+    try {
+      setState(prev => ({ ...prev, submitting: true, error: null }));
+
+      const timeSpent = questionStartTimeRef.current
+        ? Math.floor((Date.now() - questionStartTimeRef.current) / 1000)
+        : 0;
+
+      const submitRequest: SubmitAnswerRequest = {
+        answer: state.currentAnswer,
+        timeSpent,
+        action: 'submit',
       };
 
-      dispatch({
-        type: 'INITIALIZE_SESSION',
-        payload: { testSession: newTestSession, test: state.test }
-      });
+      const response: ServerActionResponse = await apiService.submitAnswer(state.sessionId, submitRequest);
 
-      // Navigate to next section if available
-      if (result.data.nextSectionIndex !== null) {
-        dispatch({ type: 'NAVIGATE_SECTION', payload: result.data.nextSectionIndex });
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to submit answer');
       }
 
-      return result.data;
-    } catch (error: any) {
-      console.error('Failed to submit section:', error);
-      dispatch({ type: 'SET_ERROR', payload: error.message });
-      throw error;
-    } finally {
-      dispatch({ type: 'SET_SUBMITTING', payload: false });
-    }
-  }, [state.testSession, state.test, state.currentSectionIndex, state.answers, state.submitting, api]);
+      await handleServerResponse(response);
 
-  const abandonTest = useCallback(async () => {
-    if (!state.testSession) return;
+    } catch (error: any) {
+      setState(prev => ({
+        ...prev,
+        submitting: false,
+        error: error.message
+      }));
+
+      toast.error('Failed to submit answer');
+    }
+  }, [state.sessionId, state.submitting, state.currentAnswer, handleServerResponse]);
+
+  const skipQuestion = useCallback(async (reason?: string) => {
+    if (!state.sessionId || state.submitting) return;
 
     try {
-      await api.abandonSession(state.testSession.id);
-      stopMainTimer();
-      dispatch({ type: 'RESET_SESSION' });
+      setState(prev => ({ ...prev, submitting: true, error: null }));
+
+      const timeSpent = questionStartTimeRef.current
+        ? Math.floor((Date.now() - questionStartTimeRef.current) / 1000)
+        : 0;
+
+      const skipRequest: SubmitAnswerRequest = {
+        answer: null,
+        timeSpent,
+        action: 'skip',
+        skipReason: reason,
+      };
+
+      const response: ServerActionResponse = await apiService.submitAnswer(state.sessionId, skipRequest);
+
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to skip question');
+      }
+
+      await handleServerResponse(response);
+
     } catch (error: any) {
-      console.error('Failed to abandon test:', error);
-      dispatch({ type: 'SET_ERROR', payload: error.message });
+      setState(prev => ({
+        ...prev,
+        submitting: false,
+        error: error.message
+      }));
+
+      toast.error('Failed to skip question');
     }
-  }, [state.testSession, stopMainTimer, api]);
+  }, [state.sessionId, state.submitting, handleServerResponse]);
 
-  const saveProgress = useCallback(async () => {
-    await manualSave();
-  }, [manualSave]);
+  // Manual test submission with navigation
+  const submitTest = useCallback(async (forceSubmit = false) => {
+    if (!state.sessionId || state.submitting) return;
 
-  // Manual time sync function
-  const manualTimeSync = useCallback(async () => {
-    await syncWithServer();
-  }, [syncWithServer]);
+    try {
+      setState(prev => ({ ...prev, submitting: true, error: null }));
 
-  // Reset session with timer adjustment reset
+      const result = await apiService.submitTestSession(state.sessionId, { forceSubmit });
+
+      const finalScore: SessionFinalScore = result.finalScore || result;
+      const currentSessionId = state.sessionId;
+
+      setState(prev => ({
+        ...prev,
+        finalScore,
+        isCompleted: true,
+        submitting: false,
+      }));
+
+      if (currentSessionId) {
+        leaveSession(currentSessionId);
+
+        setTimeout(() => {
+          resetSessionState();
+          navigateToResults(currentSessionId, finalScore, { manualSubmission: true });
+        }, 2000);
+      }
+
+      toast.success('Test submitted successfully! Redirecting to results...', {
+        autoClose: 2000
+      });
+
+    } catch (error: any) {
+      setState(prev => ({ ...prev, submitting: false, error: error.message }));
+      toast.error('Failed to submit test');
+    }
+  }, [state.sessionId, state.submitting, leaveSession, resetSessionState, navigateToResults]);
+
+  const abandonTest = useCallback(async () => {
+    if (!state.sessionId) return;
+
+    try {
+      await apiService.abandonTestSession(state.sessionId);
+
+      if (state.sessionId) {
+        leaveSession(state.sessionId);
+      }
+
+      setState(prev => ({
+        ...prev,
+        sessionId: null,
+        initialized: false,
+        isCompleted: true,
+      }));
+
+      navigate('/dashboard');
+      toast.info('Test abandoned');
+
+    } catch (error: any) {
+      toast.error('Failed to abandon test');
+    }
+  }, [state.sessionId, leaveSession, navigate]);
+
+  // REVIEW PHASE
+  const submitWithSkipped = useCallback(async () => {
+    await submitTest(true);
+  }, [submitTest]);
+
+  const continueAnswering = useCallback(async () => {
+    // Implementation for continuing to answer skipped questions
+  }, []);
+
   const resetSession = useCallback(() => {
-    stopMainTimer();
-    setTimerAdjustment(0); // Reset timer adjustment
-    dispatch({ type: 'RESET_SESSION' });
-    hasSessionLoaded.current = false;
-    isRequestInProgress.current = false;
-  }, [stopMainTimer]);
+    if (state.sessionId) {
+      leaveSession(state.sessionId);
+    }
 
-  // Memoize the entire context value to prevent re-creation
+    if (socketCleanupRef.current) {
+      socketCleanupRef.current();
+      socketCleanupRef.current = null;
+    }
+
+    setState({
+      sessionId: null,
+      initialized: false,
+      questionState: null,
+      navigationContext: null,
+      sessionInfo: null,
+      loading: false,
+      error: null,
+      submitting: false,
+      currentAnswer: null,
+      hasUnsavedChanges: false,
+      questionStartTime: null,
+      finalScore: null,
+      isCompleted: false,
+    });
+
+    setInitialTimerValue(null);
+    questionStartTimeRef.current = null;
+  }, [state.sessionId, leaveSession]);
+
   const contextValue = useMemo<TestSessionContextValue>(() => ({
     state,
-    timerState: {
-      timeRemaining,
-      sectionTimeRemaining: state.test?.settings.useSections && sectionTimerInitialized ? sectionTimeRemaining : undefined,
-      isTimerInitialized: isInitialized
-    },
-    actions: {
-      initializeSession,
-      updateAnswer,
-      toggleFlag,
-      navigateToQuestion,
-      navigateToSection,
-      submitCurrentSection,
-      submitTest,
-      abandonTest,
-      saveProgress,
-      resetSession,
-      syncTime: manualTimeSync
-    }
-  }), [
-    state,
-    timeRemaining,
-    sectionTimeRemaining,
-    sectionTimerInitialized,
-    isInitialized,
-    initializeSession,
+    checkExistingSession,
+    startSession,
+    rejoinSession,
     updateAnswer,
-    toggleFlag,
-    navigateToQuestion,
-    navigateToSection,
-    submitCurrentSection,
+    submitAnswer,
+    skipQuestion,
     submitTest,
     abandonTest,
-    saveProgress,
+    submitWithSkipped,
+    continueAnswering,
     resetSession,
-    manualTimeSync
+    refreshQuestion,
+    requestTimerSync,
+    formatTimeRemaining,
+    timerDisplay,
+    networkStatus,
+    connectionStatus,
+  }), [
+    state,
+    checkExistingSession,
+    startSession,
+    rejoinSession,
+    updateAnswer,
+    submitAnswer,
+    skipQuestion,
+    submitTest,
+    abandonTest,
+    submitWithSkipped,
+    continueAnswering,
+    resetSession,
+    refreshQuestion,
+    requestTimerSync,
+    formatTimeRemaining,
+    timerDisplay,
+    networkStatus,
+    connectionStatus,
   ]);
 
   return (

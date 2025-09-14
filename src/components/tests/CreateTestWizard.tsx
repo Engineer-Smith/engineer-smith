@@ -1,4 +1,4 @@
-// src/components/tests/CreateTestWizard.tsx
+// src/components/tests/CreateTestWizard.tsx - FIXED VERSION
 import React, { useState } from 'react';
 import { Container, Row, Col, Card, CardBody, Progress, Alert } from 'reactstrap';
 import { CheckCircle, AlertCircle } from 'lucide-react';
@@ -11,7 +11,7 @@ import QuestionAssignment from './QuestionAssignment';
 import ReviewPublish from './ReviewPublish';
 
 // Import types
-import type { CreateTestData } from '../../types/createTest';
+import type { CreateTestData, WizardStepProps } from '../../types';
 
 interface WizardStep {
   id: number;
@@ -67,32 +67,36 @@ const CreateTestWizard: React.FC<CreateTestWizardProps> = ({
   const [loading, setLoading] = useState<boolean>(false);
 
   // Initialize test data with backend-aligned structure
-  const [testData, setTestData] = useState<CreateTestData>({
-    // Required backend fields
-    title: '',
-    description: '',
-    testType: 'custom',
-    languages: [], // Backend expects array of Language enum values
-    tags: [], // Backend expects array of Tags enum values
-    
-    // Settings object - matches backend exactly
-    settings: {
-      timeLimit: 0, // Required - user must set
-      attemptsAllowed: 0, // Required - user must set  
-      shuffleQuestions: false, // Default false
-      useSections: false, // Initialize as false instead of undefined
-    },
-    
-    // Questions/sections - used based on useSections setting
-    questions: [], // Array of {questionId, points}
-    sections: [], // Array of sections with questions
-    
-    // Backend flags
-    isGlobal: false, // Default false
-    status: 'draft', // Default to draft
-    
-    // Frontend-only helper fields
-    instructions: '', // Not sent to backend
+  const [testData, setTestData] = useState<CreateTestData>(() => {
+    // Use the helper function from types to create empty test data
+    const initialData: CreateTestData = {
+      // Required backend fields
+      title: '',
+      description: '',
+      testType: 'custom',
+      languages: [], // Backend expects array of Language enum values
+      tags: [], // Backend expects array of Tags enum values
+      
+      // Settings object - matches backend exactly
+      settings: {
+        timeLimit: 60, // Default 1 hour
+        attemptsAllowed: 1, // Default 1 attempt
+        shuffleQuestions: false, // Default false
+        useSections: false, // Default false
+      },
+      
+      // Questions/sections - used based on useSections setting
+      questions: [], // Array of {questionId, points} - now always initialized
+      sections: [], // Array of sections with questions - now always initialized
+      
+      // Backend flags
+      status: 'draft', // Default to draft
+      
+      // Frontend-only helper fields (will be stripped before API call)
+      instructions: '', // Not sent to backend
+    };
+
+    return initialData;
   });
 
   const currentStepData = WIZARD_STEPS.find(step => step.id === currentStep);
@@ -157,18 +161,18 @@ const CreateTestWizard: React.FC<CreateTestWizardProps> = ({
   const isStepCompleted = (stepId: number): boolean => {
     switch (stepId) {
       case 1:
-        return !!(testData.title && testData.description && testData.languages.length > 0 && testData.tags.length > 0);
+        return !!(testData.title && testData.description && testData.languages.length > 0);
       case 2:
         return !!(typeof testData.settings.useSections === 'boolean' && 
                  testData.settings.timeLimit > 0 && 
                  testData.settings.attemptsAllowed > 0);
       case 3:
-        return !testData.settings.useSections || testData.sections.length > 0;
+        return testData.settings.useSections === false || Boolean(testData.sections && testData.sections.length > 0);
       case 4:
         if (testData.settings.useSections) {
-          return testData.sections.every(section => section.questions.length > 0);
+          return testData.sections ? testData.sections.every(section => section.questions.length > 0) : false;
         }
-        return testData.questions.length > 0;
+        return testData.questions ? testData.questions.length > 0 : false;
       case 5:
         return false; // Review step is never "completed" until published
       default:
@@ -188,11 +192,12 @@ const CreateTestWizard: React.FC<CreateTestWizardProps> = ({
   };
 
   const renderCurrentStep = (): React.ReactNode => {
-    const commonProps = {
+    const commonProps: WizardStepProps = {
       testData,
       setTestData,
       onNext: handleNext,
       onPrevious: handlePrevious,
+      onCancel: handleCancel,
       setError,
       setLoading
     };
@@ -202,7 +207,6 @@ const CreateTestWizard: React.FC<CreateTestWizardProps> = ({
         return (
           <TestBasics
             {...commonProps}
-            onCancel={handleCancel}
           />
         );
       case 2:
@@ -241,6 +245,21 @@ const CreateTestWizard: React.FC<CreateTestWizardProps> = ({
   };
 
   const validSteps = getValidSteps();
+
+  // Helper function to safely get array length
+  const getQuestionsCount = (): number => {
+    if (testData.settings.useSections === true) {
+      return testData.sections ? testData.sections.length : 0;
+    }
+    return testData.questions ? testData.questions.length : 0;
+  };
+
+  const getQuestionsLabel = (): string => {
+    if (testData.settings.useSections === true) {
+      return 'Sections';
+    }
+    return 'Questions';
+  };
 
   return (
     <Container fluid className="py-4">
@@ -365,15 +384,9 @@ const CreateTestWizard: React.FC<CreateTestWizardProps> = ({
                     <div className="mb-1">
                       <strong>Title:</strong> {testData.title}
                     </div>
-                    {testData.settings.useSections ? (
-                      <div className="mb-1">
-                        <strong>Sections:</strong> {testData.sections.length}
-                      </div>
-                    ) : (
-                      <div className="mb-1">
-                        <strong>Questions:</strong> {testData.questions.length}
-                      </div>
-                    )}
+                    <div className="mb-1">
+                      <strong>{getQuestionsLabel()}:</strong> {getQuestionsCount()}
+                    </div>
                     <div>
                       <strong>Time Limit:</strong> {testData.settings.timeLimit} min
                     </div>

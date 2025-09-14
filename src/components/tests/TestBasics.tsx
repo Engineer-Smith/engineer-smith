@@ -28,9 +28,8 @@ import {
 } from 'lucide-react';
 
 // Import types
-import type { WizardStepProps, TestTemplate } from '../../types/createTest';
+import type { WizardStepProps } from '../../types';
 import type { Language, Tags, TestType, TestStatus } from '../../types';
-import { getTestScopeText, canCreateGlobalTests } from '../../types/createTest';
 import { useAuth } from '../../context/AuthContext';
 
 // Interface for language options
@@ -54,6 +53,19 @@ interface GroupedOptions<T> {
   [category: string]: T[];
 }
 
+// Test Template interface - matches the structure but uses React component references
+interface TestTemplate {
+  id: TestType;
+  name: string;
+  description: string;
+  languages: Language[];
+  tags: Tags[];
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  color: string;
+  estimatedQuestions: string;
+  difficulty: string;
+}
+
 const TestBasics: React.FC<WizardStepProps> = ({
   testData,
   setTestData,
@@ -66,8 +78,10 @@ const TestBasics: React.FC<WizardStepProps> = ({
   const [showCustomSelection, setShowCustomSelection] = useState<boolean>(false);
 
   // Determine test scope based on user's organization
-  const isGlobalTest = canCreateGlobalTests(user?.organization);
-  const testScopeText = getTestScopeText(user?.organization);
+  const isGlobalTest = user?.organization?.isSuperOrg ?? false;
+  const testScopeText = user?.organization?.isSuperOrg 
+    ? 'Global Test (Available to all organizations)'
+    : `Organization Test (Available to ${user?.organization?.name || 'your organization'} only)`;
 
   const TEST_TEMPLATES: TestTemplate[] = [
     {
@@ -270,26 +284,22 @@ const TestBasics: React.FC<WizardStepProps> = ({
 
   const validateStep = (): boolean => {
     if (!testData.title?.trim()) {
-      setError('Test title is required');
+      setError?.('Test title is required');
       return false;
     }
     
     if (!testData.description?.trim()) {
-      setError('Test description is required');
+      setError?.('Test description is required');
       return false;
     }
     
     if (!testData.languages?.length) {
-      setError('Please select at least one programming language');
+      setError?.('Please select at least one programming language');
       return false;
     }
     
-    if (!testData.tags?.length) {
-      setError('Please select at least one topic/tag');
-      return false;
-    }
-    
-    setError(null);
+    // Don't require tags - they're optional for better UX
+    setError?.(null);
     return true;
   };
 

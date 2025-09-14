@@ -67,26 +67,28 @@ const SectionConfig: React.FC<WizardStepProps> = ({
   const [autoDistribute, setAutoDistribute] = useState<boolean>(false);
 
   const addSection = (): void => {
-    const suggestedTime = Math.max(10, Math.floor((testData.settings?.timeLimit || 45) / (testData.sections.length + 2)));
+    const currentSections = testData.sections || [];
+    const suggestedTime = Math.max(10, Math.floor((testData.settings?.timeLimit || 45) / (currentSections.length + 2)));
     const newSection: TestSection = {
-      name: `Section ${testData.sections.length + 1}`,
+      name: `Section ${currentSections.length + 1}`,
       timeLimit: suggestedTime,
       questions: []
     };
 
     setTestData({
       ...testData,
-      sections: [...(testData.sections || []), newSection]
+      sections: [...currentSections, newSection]
     });
   };
 
   const removeSection = (index: number): void => {
-    if ((testData.sections?.length || 0) <= 1) {
+    const currentSections = testData.sections || [];
+    if (currentSections.length <= 1) {
       setError('At least one section is required');
       return;
     }
 
-    const newSections = testData.sections.filter((_, i) => i !== index);
+    const newSections = currentSections.filter((_, i) => i !== index);
     setTestData({
       ...testData,
       sections: newSections
@@ -95,7 +97,8 @@ const SectionConfig: React.FC<WizardStepProps> = ({
   };
 
   const updateSection = (index: number, field: keyof TestSection, value: string | number): void => {
-    const newSections = [...(testData.sections || [])];
+    const currentSections = testData.sections || [];
+    const newSections = [...currentSections];
     newSections[index] = {
       ...newSections[index],
       [field]: value
@@ -254,7 +257,7 @@ const SectionConfig: React.FC<WizardStepProps> = ({
     
     const recommendations: SectionRecommendation[] = [];
     
-    if (sections.length < 3 && testData.languages?.length > 1) {
+    if (sections.length < 3 && (testData.languages?.length || 0) > 1) {
       recommendations.push({
         type: 'suggestion',
         message: 'Consider creating separate sections for different programming languages'
@@ -442,10 +445,10 @@ const SectionConfig: React.FC<WizardStepProps> = ({
                             {index + 1}
                           </Badge>
                           Section {index + 1}
-                          {section.questions?.length > 0 && (
+                          {(section.questions?.length || 0) > 0 && (
                             <Badge color="success" size="sm" className="ms-2">
                               <CheckCircle size={10} className="me-1" />
-                              {section.questions.length} questions
+                              {section.questions?.length || 0} questions
                             </Badge>
                           )}
                         </h6>
@@ -534,8 +537,8 @@ const SectionConfig: React.FC<WizardStepProps> = ({
                           <Col xs="auto">
                             <div className="d-flex align-items-center gap-2">
                               <small className="text-muted">Progress:</small>
-                              <Badge color={section.questions?.length > 0 ? "success" : "warning"} size="sm">
-                                {section.questions?.length > 0 ? "Ready" : "Pending"}
+                              <Badge color={(section.questions?.length || 0) > 0 ? "success" : "warning"} size="sm">
+                                {(section.questions?.length || 0) > 0 ? "Ready" : "Pending"}
                               </Badge>
                             </div>
                           </Col>
@@ -627,7 +630,7 @@ const SectionConfig: React.FC<WizardStepProps> = ({
                           <Badge color="info" size="sm">
                             {section.timeLimit}m
                           </Badge>
-                          <Badge color={section.questions?.length > 0 ? "success" : "secondary"} size="sm">
+                          <Badge color={(section.questions?.length || 0) > 0 ? "success" : "secondary"} size="sm">
                             {section.questions?.length || 0} Q
                           </Badge>
                         </div>

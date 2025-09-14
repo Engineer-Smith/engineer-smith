@@ -1,5 +1,8 @@
+// src/pages/TestDetailsPage.tsx - CORRECTED to handle session conflicts properly
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import apiService from '../services/ApiService';
 import {
   Container,
   Row,
@@ -11,7 +14,6 @@ import {
   Badge,
   Alert,
   Spinner,
-  Progress,
   Modal,
   ModalHeader,
   ModalBody,
@@ -21,18 +23,18 @@ import {
   ArrowLeft,
   Clock,
   FileText,
+  Award,
+  Target,
   AlertTriangle,
   Play,
-  RotateCcw,
-  CheckCircle,
-  XCircle,
   Info,
-  Award,
-  Target
+  RotateCcw
 } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
-import apiService from '../services/ApiService';
-import type { Test, TestSession, TestType, Language, Tags } from '../types';
+import type { Test, TestType, Language } from '../types';
+import type {
+  StartSessionConflictResponse,
+  CheckExistingSessionResponse
+} from '../types/session';
 
 const TestDetailsPage: React.FC = () => {
   const { testId } = useParams<{ testId: string }>();
@@ -40,16 +42,23 @@ const TestDetailsPage: React.FC = () => {
   const { user } = useAuth();
 
   const [test, setTest] = useState<Test | null>(null);
-  const [previousAttempts, setPreviousAttempts] = useState<TestSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showStartModal, setShowStartModal] = useState(false);
 
-  // Fetch test details and user's previous attempts
+  // ADDED: Session conflict handling
+  const [showConflictModal, setShowConflictModal] = useState(false);
+  const [existingSession, setExistingSession] = useState<any>(null);
+  const [conflictLoading, setConflictLoading] = useState(false);
+
+  // Fetch test details on mount
   useEffect(() => {
     if (testId) {
       fetchTestDetails();
+    } else {
+      setError('No test ID provided');
+      setLoading(false);
     }
   }, [testId]);
 
@@ -58,25 +67,17 @@ const TestDetailsPage: React.FC = () => {
       setLoading(true);
       setError(null);
 
-      // Get test details
-      const testResponse = await apiService.getTest(testId!);
-      if (testResponse.error) {
-        throw new Error(testResponse.message || 'Failed to fetch test');
+      console.log('Fetching test details for ID:', testId);
+
+      // FIXED: getTest() returns Test directly, no .data wrapper
+      const test = await apiService.getTest(testId!);
+
+      if (!test || !test._id) {
+        throw new Error('Invalid test data received');
       }
 
-      setTest(testResponse.data!);
-
-      // Get user's previous attempts
-      const sessionsResponse = await apiService.getAllTestSessions({ 
-        testId: testId!,
-        userId: user?.id 
-      });
-      
-      if (sessionsResponse.error) {
-        console.warn('Could not fetch previous attempts:', sessionsResponse.message);
-      } else {
-        setPreviousAttempts(sessionsResponse.data || []);
-      }
+      setTest(test);
+      console.log('Test details loaded:', test);
 
     } catch (err: any) {
       console.error('Error fetching test details:', err);
@@ -86,27 +87,91 @@ const TestDetailsPage: React.FC = () => {
     }
   };
 
-  const handleStartTest = async () => {
+  // CORRECTED: Handle session conflicts properly
+  const handleStartTest = async (forceNew = false) => {
+    if (!testId) {
+      setError('No test ID available');
+      return;
+    }
+
     try {
       setStarting(true);
       setError(null);
 
-      const response = await apiService.startTestSession({ testId: testId! });
-      
-      if (response.error) {
+      console.log('Starting test session for test:', testId, { forceNew });
+
+      // CORRECTED: Use proper API call structure
+      const response = await apiService.startTestSession({
+        testId,
+        forceNew
+      });
+
+      if (!response.success) {
         throw new Error(response.message || 'Failed to start test session');
       }
 
-      // Navigate to test session
-      navigate(`/test-session/${response.data?.id}`);
+      console.log('Test session started:', response);
+
+      // FIXED: Navigate using TEST ID, not session ID
+      navigate(`/test-session/${testId}`);
 
     } catch (err: any) {
-      console.error('Start test error:', err);
-      setError(err.message || 'Failed to start test');
+      console.error('Failed to start test session:', err);
+
+      // CORRECTED: Handle session conflict errors properly
+      if (err.code === 'EXISTING_SESSION_FOUND' && err.existingSession) {
+        console.log('Session conflict detected:', err.existingSession);
+        setExistingSession(err.existingSession);
+        setShowConflictModal(true);
+        setShowStartModal(false);
+      } else {
+        setError(err.message || 'Failed to start test session');
+        setShowStartModal(false);
+      }
       setStarting(false);
     }
   };
 
+  // ADDED: Handle existing session rejoin
+  const handleRejoinSession = async () => {
+    if (!existingSession?.sessionId || !testId) return;
+
+    try {
+      setConflictLoading(true);
+      console.log('Rejoining existing session:', existingSession.sessionId);
+
+      // Navigate to test session page with TEST ID
+      navigate(`/test-session/${testId}`);
+
+    } catch (err: any) {
+      console.error('Failed to rejoin session:', err);
+      setError(err.message || 'Failed to rejoin session');
+    } finally {
+      setConflictLoading(false);
+      setShowConflictModal(false);
+    }
+  };
+
+  // ADDED: Handle abandoning existing session
+  const handleAbandonAndStartNew = async () => {
+    try {
+      setConflictLoading(true);
+      console.log('Starting new session with forceNew=true');
+
+      // Close conflict modal and start new session
+      setShowConflictModal(false);
+      setShowStartModal(false);
+
+      await handleStartTest(true); // forceNew = true
+
+    } catch (err: any) {
+      console.error('Failed to start new session:', err);
+      setError(err.message || 'Failed to start new session');
+      setConflictLoading(false);
+    }
+  };
+
+  // Helper functions
   const getTestTypeIcon = (testType: TestType) => {
     const icons = {
       frontend_basics: '🌐',
@@ -132,61 +197,87 @@ const TestDetailsPage: React.FC = () => {
   };
 
   const formatLanguages = (languages: Language[]): string => {
-    return languages.length > 0 ? languages.join(', ') : 'General';
+    return languages && languages.length > 0 ? languages.join(', ') : 'General';
   };
 
   const formatDuration = (minutes: number): string => {
+    if (typeof minutes !== 'number' || isNaN(minutes)) {
+      return '0m';
+    }
+
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
-    
+
     if (hours > 0) {
       return `${hours}h ${mins}m`;
     }
     return `${mins}m`;
   };
 
-  const calculateTotalQuestions = (test: Test): number => {
-    if (test.settings.useSections && test.sections) {
-      return test.sections.reduce((total, section) => total + section.questions.length, 0);
+  // CORRECTED: Format time remaining for existing sessions
+  const formatTimeRemaining = (seconds: number): string => {
+    if (typeof seconds !== 'number' || isNaN(seconds) || seconds <= 0) {
+      return '0m';
     }
+
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+
+    if (hours > 0) {
+      return `${hours}h ${minutes}m ${secs}s`;
+    } else if (minutes > 0) {
+      return `${minutes}m ${secs}s`;
+    } else {
+      return `${secs}s`;
+    }
+  };
+
+  // FIXED: Safe calculation functions to prevent NaN
+  const calculateTotalQuestions = (test: Test): number => {
+    if (!test) return 0;
+
+    if (test.settings?.useSections && test.sections && Array.isArray(test.sections)) {
+      return test.sections.reduce((total, section) => {
+        const sectionQuestions = section?.questions?.length || 0;
+        return total + sectionQuestions;
+      }, 0);
+    }
+
     return test.questions?.length || 0;
   };
 
   const calculateTotalPoints = (test: Test): number => {
-    if (test.settings.useSections && test.sections) {
-      return test.sections.reduce((total, section) => 
-        total + section.questions.reduce((sectionTotal, q) => sectionTotal + q.points, 0), 0
-      );
+    if (!test) return 0;
+
+    if (test.settings?.useSections && test.sections && Array.isArray(test.sections)) {
+      return test.sections.reduce((total, section) => {
+        if (!section?.questions || !Array.isArray(section.questions)) return total;
+
+        const sectionPoints = section.questions.reduce((sectionTotal, q) => {
+          const questionPoints = typeof q?.points === 'number' ? q.points : 0;
+          return sectionTotal + questionPoints;
+        }, 0);
+
+        return total + sectionPoints;
+      }, 0);
     }
-    return test.questions?.reduce((total, q) => total + q.points, 0) || 0;
+
+    if (!test.questions || !Array.isArray(test.questions)) return 0;
+
+    return test.questions.reduce((total, q) => {
+      const questionPoints = typeof q?.points === 'number' ? q.points : 0;
+      return total + questionPoints;
+    }, 0);
   };
 
-  const canStartTest = (): boolean => {
-    if (!test) return false;
-    return previousAttempts.length < test.settings.attemptsAllowed;
-  };
-
-  const getAttemptStatus = (attempt: TestSession) => {
-    switch (attempt.status) {
-      case 'completed':
-        return { color: 'success', icon: CheckCircle, text: 'Completed' };
-      case 'abandoned':
-        return { color: 'warning', icon: XCircle, text: 'Abandoned' };
-      case 'expired':
-        return { color: 'danger', icon: Clock, text: 'Expired' };
-      case 'inProgress':
-        return { color: 'info', icon: Play, text: 'In Progress' };
-      default:
-        return { color: 'secondary', icon: Info, text: 'Unknown' };
-    }
-  };
-
+  // Loading state
   if (loading) {
     return (
       <Container className="py-5">
         <Row className="justify-content-center">
           <Col md={6} className="text-center">
-            <Spinner color="primary" className="mb-3" />
+            <Spinner color="primary" size="lg" className="mb-3" />
             <p className="text-muted">Loading test details...</p>
           </Col>
         </Row>
@@ -194,6 +285,7 @@ const TestDetailsPage: React.FC = () => {
     );
   }
 
+  // Error state
   if (error || !test) {
     return (
       <Container className="py-5">
@@ -219,8 +311,8 @@ const TestDetailsPage: React.FC = () => {
         <Col lg={8} className="mx-auto">
           {/* Header */}
           <div className="d-flex align-items-center mb-4">
-            <Button 
-              color="outline-secondary" 
+            <Button
+              color="outline-secondary"
               className="me-3"
               onClick={() => navigate('/dashboard')}
             >
@@ -257,7 +349,7 @@ const TestDetailsPage: React.FC = () => {
                     </Badge>
                   </div>
                 </div>
-                <Badge 
+                <Badge
                   color={test.status === 'active' ? 'success' : 'secondary'}
                   className="fs-6"
                 >
@@ -280,14 +372,14 @@ const TestDetailsPage: React.FC = () => {
                 <Col md={3}>
                   <div className="text-center p-3 bg-light rounded">
                     <Clock size={24} className="text-warning mb-2" />
-                    <div className="fw-bold">{formatDuration(test.settings.timeLimit)}</div>
+                    <div className="fw-bold">{formatDuration(test.settings?.timeLimit || 0)}</div>
                     <small className="text-muted">Time Limit</small>
                   </div>
                 </Col>
                 <Col md={3}>
                   <div className="text-center p-3 bg-light rounded">
                     <RotateCcw size={24} className="text-info mb-2" />
-                    <div className="fw-bold">{test.settings.attemptsAllowed}</div>
+                    <div className="fw-bold">{test.settings?.attemptsAllowed || 0}</div>
                     <small className="text-muted">Attempts</small>
                   </div>
                 </Col>
@@ -309,13 +401,13 @@ const TestDetailsPage: React.FC = () => {
                 <Col md={6}>
                   <h6>Question Shuffling</h6>
                   <p className="text-muted">
-                    {test.settings.shuffleQuestions ? 'Enabled' : 'Disabled'}
+                    {test.settings?.shuffleQuestions ? 'Enabled' : 'Disabled'}
                   </p>
                 </Col>
               </Row>
 
               {/* Section Breakdown */}
-              {test.settings.useSections && test.sections && (
+              {test.settings?.useSections && test.sections && Array.isArray(test.sections) && (
                 <div className="mt-4">
                   <h6>Test Sections</h6>
                   <div className="row g-2">
@@ -324,13 +416,13 @@ const TestDetailsPage: React.FC = () => {
                         <div className="border rounded p-3">
                           <div className="d-flex justify-content-between align-items-center">
                             <div>
-                              <div className="fw-medium">{section.name}</div>
+                              <div className="fw-medium">{section?.name || `Section ${index + 1}`}</div>
                               <small className="text-muted">
-                                {section.questions.length} questions • {formatDuration(section.timeLimit)}
+                                {section?.questions?.length || 0} questions • {formatDuration(section?.timeLimit || 0)}
                               </small>
                             </div>
                             <Badge color="outline-primary">
-                              {section.questions.reduce((sum, q) => sum + q.points, 0)} pts
+                              {section?.questions?.reduce((sum, q) => sum + (q?.points || 0), 0) || 0} pts
                             </Badge>
                           </div>
                         </div>
@@ -342,93 +434,23 @@ const TestDetailsPage: React.FC = () => {
             </CardBody>
           </Card>
 
-          {/* Previous Attempts */}
-          {previousAttempts.length > 0 && (
-            <Card className="shadow-sm border-0 mb-4">
-              <CardHeader className="bg-white">
-                <h5 className="mb-0">Your Previous Attempts</h5>
-              </CardHeader>
-              <CardBody>
-                <div className="table-responsive">
-                  <table className="table table-sm">
-                    <thead>
-                      <tr>
-                        <th>Attempt</th>
-                        <th>Status</th>
-                        <th>Score</th>
-                        <th>Date</th>
-                        <th>Duration</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {previousAttempts.map((attempt) => {
-                        const status = getAttemptStatus(attempt);
-                        const StatusIcon = status.icon;
-                        return (
-                          <tr key={attempt.id}>
-                            <td>#{attempt.attemptNumber}</td>
-                            <td>
-                              <Badge color={status.color} className="d-flex align-items-center w-fit">
-                                <StatusIcon size={12} className="me-1" />
-                                {status.text}
-                              </Badge>
-                            </td>
-                            <td>
-                              {attempt.score.earnedPoints}/{attempt.score.totalPoints}
-                              {attempt.status === 'completed' && (
-                                <span className={`ms-2 ${attempt.score.passed ? 'text-success' : 'text-danger'}`}>
-                                  ({attempt.score.passed ? 'Pass' : 'Fail'})
-                                </span>
-                              )}
-                            </td>
-                            <td>
-                              {new Date(attempt.createdAt).toLocaleDateString()}
-                            </td>
-                            <td>
-                              {attempt.timeSpent ? formatDuration(Math.floor(attempt.timeSpent / 60)) : '-'}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </CardBody>
-            </Card>
-          )}
-
           {/* Start Test Section */}
           <Card className="shadow-sm border-0">
             <CardBody className="text-center">
-              {canStartTest() ? (
-                <>
-                  <Target size={48} className="text-primary mb-3" />
-                  <h5>Ready to Start?</h5>
-                  <p className="text-muted mb-4">
-                    Attempt {previousAttempts.length + 1} of {test.settings.attemptsAllowed}
-                  </p>
-                  <Button 
-                    color="primary" 
-                    size="lg"
-                    onClick={() => setShowStartModal(true)}
-                    disabled={starting}
-                  >
-                    {starting ? <Spinner size="sm" className="me-2" /> : <Play size={16} className="me-2" />}
-                    Start Test
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <XCircle size={48} className="text-danger mb-3" />
-                  <h5>Maximum Attempts Reached</h5>
-                  <p className="text-muted mb-4">
-                    You have used all {test.settings.attemptsAllowed} attempts for this test.
-                  </p>
-                  <Button color="secondary" onClick={() => navigate('/dashboard')}>
-                    Back to Dashboard
-                  </Button>
-                </>
-              )}
+              <Target size={48} className="text-primary mb-3" />
+              <h5>Ready to Start?</h5>
+              <p className="text-muted mb-4">
+                Click below to begin your test session. The timer will start immediately.
+              </p>
+              <Button
+                color="primary"
+                size="lg"
+                onClick={() => setShowStartModal(true)}
+                disabled={starting || test.status !== 'active'}
+              >
+                {starting ? <Spinner size="sm" className="me-2" /> : <Play size={16} className="me-2" />}
+                Start Test
+              </Button>
             </CardBody>
           </Card>
         </Col>
@@ -445,31 +467,88 @@ const TestDetailsPage: React.FC = () => {
           </div>
           <p><strong>Important:</strong> Once you start this test, the timer will begin immediately.</p>
           <ul className="list-unstyled">
-            <li>✓ You have <strong>{formatDuration(test.settings.timeLimit)}</strong> to complete the test</li>
-            <li>✓ Your progress will be auto-saved every 30 seconds</li>
-            <li>✓ You can navigate between questions freely</li>
+            <li>✓ You have <strong>{formatDuration(test.settings?.timeLimit || 0)}</strong> to complete the test</li>
+            <li>✓ Your progress will be auto-saved</li>
+            <li>✓ You can navigate between questions</li>
             <li>✓ Make sure you have a stable internet connection</li>
           </ul>
           <Alert color="info" className="mt-3 mb-0">
             <Info size={16} className="me-2" />
-            This is attempt {previousAttempts.length + 1} of {test.settings.attemptsAllowed}.
+            This test has {test.settings?.attemptsAllowed || 0} attempt(s) allowed.
           </Alert>
         </ModalBody>
         <ModalFooter>
-          <Button 
-            color="secondary" 
+          <Button
+            color="secondary"
             onClick={() => setShowStartModal(false)}
             disabled={starting}
           >
             Cancel
           </Button>
-          <Button 
-            color="primary" 
-            onClick={handleStartTest}
+          <Button
+            color="primary"
+            onClick={() => handleStartTest(false)}
             disabled={starting}
           >
             {starting ? <Spinner size="sm" className="me-2" /> : <Play size={16} className="me-2" />}
             {starting ? 'Starting...' : 'Start Test Now'}
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* ADDED: Session Conflict Modal */}
+      <Modal isOpen={showConflictModal} toggle={() => !conflictLoading && setShowConflictModal(false)}>
+        <ModalHeader toggle={() => !conflictLoading && setShowConflictModal(false)}>
+          Existing Session Found
+        </ModalHeader>
+        <ModalBody>
+          <div className="text-center mb-3">
+            <Clock size={48} className="text-info mb-3" />
+          </div>
+          <p><strong>You have an active test session in progress.</strong></p>
+
+          {existingSession && (
+            <div className="bg-light p-3 rounded mb-3">
+              <div className="small text-muted mb-1">Test:</div>
+              <div className="fw-medium mb-2">{existingSession.testTitle}</div>
+
+              <div className="small text-muted mb-1">Progress:</div>
+              <div className="mb-2">{existingSession.questionProgress}</div>
+
+              {existingSession.timeRemaining > 0 && (
+                <>
+                  <div className="small text-muted mb-1">Time Remaining:</div>
+                  <div className="text-warning fw-medium">{formatTimeRemaining(existingSession.timeRemaining)}</div>
+                </>
+              )}
+            </div>
+          )}
+
+          <p className="mb-0">You can either continue your existing session or start a new one (which will abandon your current progress).</p>
+        </ModalBody>
+        <ModalFooter>
+          <Button
+            color="secondary"
+            onClick={() => setShowConflictModal(false)}
+            disabled={conflictLoading}
+          >
+            Cancel
+          </Button>
+          <Button
+            color="warning"
+            onClick={handleAbandonAndStartNew}
+            disabled={conflictLoading}
+          >
+            {conflictLoading ? <Spinner size="sm" className="me-2" /> : null}
+            Start Fresh
+          </Button>
+          <Button
+            color="primary"
+            onClick={handleRejoinSession}
+            disabled={conflictLoading}
+          >
+            {conflictLoading ? <Spinner size="sm" className="me-2" /> : null}
+            Continue Session
           </Button>
         </ModalFooter>
       </Modal>

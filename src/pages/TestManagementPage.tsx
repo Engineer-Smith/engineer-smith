@@ -107,13 +107,14 @@ const TestManagementPage: React.FC = () => {
 
       console.log('TestManagementPage: Fetching tests with params:', params);
 
-      const response = await apiService.getAllTests(params);
+      // FIXED: getAllTests returns Test[] directly, no wrapper
+      const tests = await apiService.getAllTests(params);
 
-      if (response.error || !Array.isArray(response.data)) {
-        throw new Error(response.message || 'Failed to fetch tests');
+      if (!Array.isArray(tests)) {
+        throw new Error('Failed to fetch tests');
       }
 
-      setTests(response.data);
+      setTests(tests);
     } catch (error: any) {
       console.error('Error fetching tests:', error);
       setError(error.message || 'Failed to fetch tests');
@@ -156,9 +157,12 @@ const TestManagementPage: React.FC = () => {
 
     try {
       setDeleting(true);
+      // FIXED: deleteTest returns { message: string } directly
       const response = await apiService.deleteTest(testToDelete.id);
-      if (response.error) {
-        throw new Error(response.message || 'Failed to delete test');
+
+      // FIXED: No error property, response IS the success object
+      if (!response || !response.message) {
+        throw new Error('Failed to delete test');
       }
 
       // Close modal and reset state
@@ -181,9 +185,12 @@ const TestManagementPage: React.FC = () => {
 
   const handleStatusChange = async (testId: string, newStatus: TestStatus) => {
     try {
-      const response = await apiService.updateTest(testId, { status: newStatus });
-      if (response.error) {
-        throw new Error(response.message || 'Failed to update test status');
+      // FIXED: updateTest returns Test directly, no wrapper
+      const updatedTest = await apiService.updateTest(testId, { status: newStatus });
+
+      // FIXED: No error property, updatedTest IS the success object
+      if (!updatedTest || !updatedTest._id) {
+        throw new Error('Failed to update test status');
       }
 
       // Refresh the list

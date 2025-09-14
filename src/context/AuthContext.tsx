@@ -1,7 +1,7 @@
 import React, { createContext, useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import apiService from '../services/ApiService';
-import type { ApiResponse, User } from '../types';
+import type { User } from '../types';
 
 interface AuthState {
   user: User | null;
@@ -15,6 +15,8 @@ interface AuthContextType extends AuthState {
   ssoLogin: () => void;
   register: (
     username: string,
+    firstName: string,    // Required field
+    lastName: string,     // Required field
     email?: string,
     password?: string,
     inviteCode?: string,
@@ -30,12 +32,12 @@ const AuthContext = createContext<AuthContextType>({
   isAuthenticated: false,
   loading: false,
   error: null,
-  login: async () => {},
-  ssoLogin: () => {},
-  register: async () => {},
+  login: async () => { },
+  ssoLogin: () => { },
+  register: async () => { },
   validateInviteCode: async () => ({ valid: false }),
-  logout: async () => {},
-  clearError: () => {},
+  logout: async () => { },
+  clearError: () => { },
 });
 
 interface AuthProviderProps {
@@ -76,28 +78,46 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     });
   };
 
+  // Helper function to get fully populated user data
+  const getFullUserData = async (): Promise<User | null> => {
+    try {
+      // FIXED: Server returns direct response, no wrapper
+      const response: { success: boolean; user: User } = await apiService.getCurrentUser();
+
+      if (response.success && response.user) {
+        return response.user;
+      }
+      return null;
+    } catch (error) {
+      console.error('Failed to get full user data:', error);
+      return null;
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
-    
+
     const checkAuthStatus = async () => {
       try {
         console.log('AuthContext: Checking auth status...');
         setState((prev) => ({ ...prev, loading: true }));
-        
-        const response: ApiResponse<{ success: boolean; user: User }> = await apiService.getCurrentUser();
+
+        // FIXED: Server returns direct response, no wrapper
+        const response: { success: boolean; user: User } = await apiService.getCurrentUser();
 
         if (!mounted) return;
 
-        if (!response.error && response.data?.success && response.data?.user) {
-          console.log('AuthContext: User authenticated:', response.data.user.loginId);
-          setAuthenticated(response.data.user);
+        if (response.success && response.user) {
+          console.log('AuthContext: User authenticated:', response.user.loginId);
+          console.log('AuthContext: Organization populated:', !!response.user.organization);
+          setAuthenticated(response.user);
         } else {
           console.log('AuthContext: No valid session');
           setUnauthenticated();
         }
       } catch (error) {
         if (!mounted) return;
-        
+
         console.log('AuthContext: Auth check failed (expected if not logged in)');
         setUnauthenticated();
       }
@@ -114,20 +134,36 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setState((prev) => ({ ...prev, loading: true, error: null }));
 
     try {
-      const response: ApiResponse<{ success: boolean; user: User; csrfToken: string }> = await apiService.login({ 
-        loginCredential, 
-        password 
+      // FIXED: Server returns direct response, no wrapper
+      const response: { success: boolean; user: User; csrfToken: string } = await apiService.login({
+        loginCredential,
+        password
       });
 
-      if (response.error || !response.data?.success || !response.data?.user) {
-        setError(response.message || 'Login failed');
+      if (!response.success || !response.user) {
+        setError('Login failed');
         return;
       }
 
-      setAuthenticated(response.data.user);
-    } catch (error) {
+      console.log('Login successful, basic user data received');
+
+      // Step 2: Get fully populated user data (includes organization)
+      const fullUser = await getFullUserData();
+
+      if (fullUser) {
+        console.log('Full user data retrieved with organization:', !!fullUser.organization);
+        setAuthenticated(fullUser);
+      } else {
+        // Fallback to basic user data if getCurrentUser fails
+        console.log('Using basic user data as fallback');
+        setAuthenticated(response.user);
+      }
+
+    } catch (error: any) {
       console.error('Login error:', error);
-      setError('Login failed. Please try again.');
+      // FIXED: Handle error properly - server may return error message directly
+      const errorMessage = error.message || error.response?.data?.message || 'Login failed. Please try again.';
+      setError(errorMessage);
     }
   }, []);
 
@@ -139,6 +175,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const register = useCallback(
     async (
       username: string,
+      firstName: string,     // Required parameter
+      lastName: string,      // Required parameter
       email?: string,
       password?: string,
       inviteCode?: string,
@@ -147,23 +185,41 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setState((prev) => ({ ...prev, loading: true, error: null }));
 
       try {
-        const response: ApiResponse<{ success: boolean; user: User; csrfToken: string }> = await apiService.register({
+        // FIXED: Server returns direct response, no wrapper
+        const response: { success: boolean; user: User; csrfToken: string } = await apiService.register({
           username,
+          firstName,    // Pass firstName to API
+          lastName,     // Pass lastName to API
           email,
           password,
           inviteCode,
           role,
         });
 
-        if (response.error || !response.data?.success || !response.data?.user) {
-          setError(response.message || 'Registration failed');
+        if (!response.success || !response.user) {
+          setError('Registration failed');
           return;
         }
 
-        setAuthenticated(response.data.user);
-      } catch (error) {
+        console.log('Registration successful, basic user data received');
+
+        // Step 2: Get fully populated user data (includes organization)
+        const fullUser = await getFullUserData();
+
+        if (fullUser) {
+          console.log('Full user data retrieved with organization:', !!fullUser.organization);
+          setAuthenticated(fullUser);
+        } else {
+          // Fallback to basic user data if getCurrentUser fails
+          console.log('Using basic user data as fallback');
+          setAuthenticated(response.user);
+        }
+
+      } catch (error: any) {
         console.error('Registration error:', error);
-        setError('Registration failed. Please try again.');
+        // FIXED: Handle error properly - server may return error message directly
+        const errorMessage = error.message || error.response?.data?.message || 'Registration failed. Please try again.';
+        setError(errorMessage);
       }
     },
     []
@@ -173,23 +229,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setState((prev) => ({ ...prev, loading: true, error: null }));
 
     try {
-      const response: ApiResponse<{ success: boolean; organization: { id: string; name: string } }> =
+      // FIXED: Server returns direct response, no wrapper
+      const response: { success: boolean; organization: { _id: string; name: string } } =
         await apiService.validateInviteCode({ inviteCode });
 
       setState((prev) => ({ ...prev, loading: false }));
 
-      if (response.error || !response.data?.success || !response.data?.organization) {
-        setError(response.message || 'Invalid invite code');
+      if (!response.success || !response.organization) {
+        setError('Invalid invite code');
         return { valid: false };
       }
 
-      return { 
-        valid: true, 
-        organizationName: response.data.organization.name 
+      return {
+        valid: true,
+        organizationName: response.organization.name
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Invite code validation error:', error);
-      setError('Failed to validate invite code');
+      // FIXED: Handle error properly
+      const errorMessage = error.message || error.response?.data?.message || 'Failed to validate invite code';
+      setError(errorMessage);
       return { valid: false };
     }
   }, []);
@@ -198,10 +257,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setState((prev) => ({ ...prev, loading: true, error: null }));
 
     try {
-      await apiService.logout();
+      // FIXED: Server returns direct response, no wrapper
+      const response: { success: boolean; message: string } = await apiService.logout();
       document.cookie = 'csrfToken=; Max-Age=0; path=/;';
+      console.log('Logout successful:', response.message);
     } catch (error) {
       console.error('Logout error:', error);
+      // Don't show error to user for logout - just proceed
     }
 
     setUnauthenticated();

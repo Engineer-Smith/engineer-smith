@@ -1,27 +1,48 @@
+// Dashboard.tsx - Updated with consolidated RecentActivity component
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Container,
   Row,
   Col,
-  Card,
-  CardBody,
-  CardTitle,
-  Button,
-  Badge,
   Alert,
-  Table,
-  Progress,
   Spinner,
-  CardHeader
+  Button,
+  Modal,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  Badge
 } from 'reactstrap';
 import { useAuth } from '../context/AuthContext';
+import { useSocketConnection, useSocketSession } from '../context/SocketContext';
+import { useTestSession } from '../context/TestSessionContext';
 import apiService from '../services/ApiService';
-import type { Test, TestSession, Result, TestType, Language } from '../types';
+import type { Test, TestSession, Result } from '../types';
+
+// Import the separated components
+import { DashboardHeader } from '../components/Dashboard/DashboardHeader';
+import { StatsCards } from '../components/Dashboard/StatsCards';
+import { AvailableTests } from '../components/Dashboard/AvailableTests';
+import { RecentActivity } from '../components/Dashboard/RecentActivity'; // UPDATED: Single consolidated component
 
 const Dashboard: React.FC = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  // Socket and session contexts
+  const { isConnected, connectionMessage, networkStatus } = useSocketConnection();
+  const { currentSessionId } = useSocketSession();
+  const {
+    state: sessionState,
+    checkExistingSession,
+    rejoinSession,
+    timerDisplay,
+    networkStatus: sessionNetworkStatus,
+    connectionStatus: sessionConnectionStatus
+  } = useTestSession();
+
+  // Dashboard data state
   const [availableTests, setAvailableTests] = useState<Test[]>([]);
   const [recentSessions, setRecentSessions] = useState<TestSession[]>([]);
   const [myResults, setMyResults] = useState<Result[]>([]);
@@ -34,88 +55,92 @@ const Dashboard: React.FC = () => {
     averageScore: 0
   });
 
-  // Add request tracking to prevent double calls in React Strict Mode
+  // Session detection and modal state
+  const [showActiveSessionModal, setShowActiveSessionModal] = useState(false);
+  const [showRejoinModal, setShowRejoinModal] = useState(false);
+  const [pendingTestId, setPendingTestId] = useState<string | null>(null);
+  const [sessionCheckResult, setSessionCheckResult] = useState<any>(null);
+
+  // Request tracking to prevent duplicate calls
   const isRequestInProgress = useRef(false);
   const hasDataLoaded = useRef(false);
 
+  // Load dashboard data on mount
   useEffect(() => {
-    // Only fetch if we haven't loaded data and no request is in progress
     if (!hasDataLoaded.current && !isRequestInProgress.current) {
       fetchDashboardData();
     }
   }, []);
 
-  const fetchDashboardData = async () => {
-    // Prevent concurrent requests (React Strict Mode issue)
-    if (isRequestInProgress.current) {
-      console.log('Dashboard: Request already in progress, skipping...');
-      return;
-    }
+  // Check for existing sessions periodically
+  useEffect(() => {
+    checkForExistingSessionOnServer();
 
-    // If we already have data, don't fetch again unless explicitly refreshing
-    if (hasDataLoaded.current && availableTests.length > 0) {
-      console.log('Dashboard: Data already loaded, skipping...');
-      return;
-    }
+    // Check every 30 seconds for session changes
+    const intervalId = setInterval(() => {
+      if (!showRejoinModal && !showActiveSessionModal) {
+        checkForExistingSessionOnServer();
+      }
+    }, 30000);
+
+    return () => clearInterval(intervalId);
+  }, []);
+
+  // Fetch all dashboard data
+  const fetchDashboardData = async () => {
+    if (isRequestInProgress.current) return;
 
     isRequestInProgress.current = true;
     setLoading(true);
     setError(null);
 
     try {
-      console.log('Dashboard: Starting data fetch...');
-
-      // Fetch available tests (only active tests for students)
-      const testsResponse = await apiService.getAllTests({ status: 'active' });
-      if (testsResponse.error) {
-        throw new Error(testsResponse.message || 'Failed to fetch tests');
+      // Fetch available tests
+      const tests = await apiService.getAllTests({ status: 'active' });
+      if (!Array.isArray(tests)) {
+        throw new Error('Failed to fetch tests');
       }
 
-      // Fetch student's test sessions
-      const sessionsResponse = await apiService.getAllTestSessions({ 
-        userId: user?.id,
-        limit: 10 
+      // Fetch recent sessions
+      const sessions = await apiService.getAllTestSessions({
+        userId: user?._id,
+        limit: 10
       });
-      if (sessionsResponse.error) {
-        throw new Error(sessionsResponse.message || 'Failed to fetch sessions');
+      if (!Array.isArray(sessions)) {
+        throw new Error('Failed to fetch sessions');
       }
 
-      // Fetch student's results
-      const resultsResponse = await apiService.getAllResults({ 
-        userId: user?.id,
-        limit: 10 
+      // Fetch results
+      const results = await apiService.getAllResults({
+        userId: user?._id,
+        limit: 10
       });
-      if (resultsResponse.error) {
-        throw new Error(resultsResponse.message || 'Failed to fetch results');
+      if (!Array.isArray(results)) {
+        throw new Error('Failed to fetch results');
       }
 
-      const tests = testsResponse.data || [];
-      const sessions = sessionsResponse.data || [];
-      const results = resultsResponse.data || [];
-
+      // Update state
       setAvailableTests(tests);
       setRecentSessions(sessions);
       setMyResults(results);
 
-      // Calculate stats
-      const completedResults = results.filter(r => r.status === 'completed');
-      const passedResults = completedResults.filter(r => r.score.passed);
-      const averageScore = completedResults.length > 0 
-        ? completedResults.reduce((sum, r) => sum + r.score.earnedPoints, 0) / completedResults.length
+      // Calculate stats from sessions instead of results for better accuracy
+      const completedSessions = sessions.filter((s: TestSession) => s.status === 'completed');
+      const passedSessions = completedSessions.filter((s: TestSession) => s.finalScore?.passed);
+      const avgScore = completedSessions.length > 0
+        ? completedSessions.reduce((sum: number, s: TestSession) => sum + (s.finalScore?.percentage || 0), 0) / completedSessions.length
         : 0;
 
       setStats({
         totalTests: tests.length,
-        completedTests: completedResults.length,
-        passedTests: passedResults.length,
-        averageScore: Math.round(averageScore)
+        completedTests: completedSessions.length,
+        passedTests: passedSessions.length,
+        averageScore: Math.round(avgScore * 10) / 10 // Round to 1 decimal
       });
 
       hasDataLoaded.current = true;
-      console.log('Dashboard: Data fetch completed successfully');
 
     } catch (err) {
-      console.error('Dashboard data fetch error:', err);
       setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
     } finally {
       setLoading(false);
@@ -123,17 +148,159 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  // Manual refresh function (for retry button)
+  // Check server for existing sessions
+  const checkForExistingSessionOnServer = async () => {
+    try {
+      console.log('Checking server for existing session...');
+      const result = await checkExistingSession();
+      console.log('Session check result:', result);
+
+      if (result.success && result.canRejoin && result.sessionId) {
+        console.log('Found rejoinable session');
+        setSessionCheckResult(result);
+
+        // Only show modal if not already showing one
+        if (!showRejoinModal && !showActiveSessionModal) {
+          setShowRejoinModal(true);
+        }
+      } else {
+        // Clear stale results
+        if (sessionCheckResult && !result.canRejoin) {
+          setSessionCheckResult(null);
+        }
+
+        if (result.recentlyCompleted || result.wasExpired) {
+          refreshDashboard();
+        }
+      }
+
+    } catch (error) {
+      console.log('Session check failed:', error);
+    }
+  };
+
+  // Refresh dashboard data
   const refreshDashboard = () => {
     hasDataLoaded.current = false;
     fetchDashboardData();
   };
 
+  // Format time display with fallback handling
+  const formatTimeDisplay = (timeRemaining: number, isValid: boolean = true): string => {
+    if (!isValid && timeRemaining === 0) {
+      return 'Syncing...';
+    }
+
+    const hours = Math.floor(timeRemaining / 3600);
+    const minutes = Math.floor((timeRemaining % 3600) / 60);
+    const seconds = timeRemaining % 60;
+
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  // Get comprehensive session status
+  const getSessionStatus = () => {
+    const hasValidTimer = timerDisplay.isActive && timerDisplay.timeRemaining > 0;
+    const fallbackTime = sessionCheckResult?.timeRemaining || 0; // REMOVED: sessionState.timeRemaining
+
+    return {
+      // Status indicators
+      isCompleted: sessionState.isCompleted,
+      isPaused: timerDisplay.isPaused || !networkStatus.isOnline,
+      isConnected: sessionConnectionStatus.isConnected,
+
+      // Timer data - use timerDisplay directly
+      timeRemaining: hasValidTimer ? timerDisplay.timeRemaining : fallbackTime,
+      hasValidTimer,
+      isTimerSynced: hasValidTimer || !sessionState.sessionId,
+
+      // Session data (prefer context, fallback to server result)
+      sessionId: sessionState.sessionId || sessionCheckResult?.sessionId,
+      sessionInfo: sessionState.sessionInfo || sessionCheckResult?.testInfo,
+      questionIndex: sessionState.questionState?.questionIndex ?? sessionCheckResult?.testInfo?.currentQuestionIndex ?? 0,
+
+      // Computed status
+      status: sessionState.isCompleted ? 'completed' :
+        (timerDisplay.isPaused || !networkStatus.isOnline) ? 'paused' : 'inProgress'
+    };
+  };
+  // Check if we should show the active session banner
+  const shouldShowSessionBanner = () => {
+    const contextHasActiveSession = sessionState.sessionId && sessionState.initialized && !sessionState.isCompleted;
+    const serverHasActiveSession = sessionCheckResult?.canRejoin && sessionCheckResult?.sessionId;
+
+    return contextHasActiveSession || serverHasActiveSession;
+  };
+
+  // Handle starting a new test
   const handleStartTest = async (testId: string) => {
-    // Navigate to test details page instead of directly starting
+    try {
+      const existingCheck = await checkExistingSession();
+      if (existingCheck.canRejoin) {
+        setPendingTestId(testId);
+        setSessionCheckResult(existingCheck);
+        setShowActiveSessionModal(true);
+        return;
+      }
+    } catch (error) {
+      // No existing session, proceed normally
+    }
+
     navigate(`/test-details/${testId}`);
   };
 
+  // Handle resuming a session
+  const handleResumeSession = async () => {
+    if (!sessionCheckResult?.sessionId) return;
+
+    try {
+      setLoading(true);
+      await rejoinSession(sessionCheckResult.sessionId);
+
+      setShowRejoinModal(false);
+      setShowActiveSessionModal(false);
+      navigate(`/test-session/${sessionCheckResult.sessionId}`);
+
+    } catch (error) {
+      setError('Failed to rejoin session. Please try again.');
+      setLoading(false);
+    }
+  };
+
+  // Handle abandoning current session and starting new
+  const handleAbandonAndStartNew = async () => {
+    if (!sessionCheckResult?.sessionId || !pendingTestId) return;
+
+    try {
+      setLoading(true);
+
+      const response = await apiService.startTestSession({
+        testId: pendingTestId,
+        forceNew: true
+      });
+
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to start new session');
+      }
+
+      setShowActiveSessionModal(false);
+      setSessionCheckResult(null);
+      setPendingTestId(null);
+
+      await refreshDashboard();
+      navigate(`/test-session/${response.session?.sessionId}`);
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start new session');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle logout
   const handleLogout = async () => {
     try {
       await logout();
@@ -142,42 +309,7 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const getTestTypeColor = (testType: TestType): string => {
-    const colors = {
-      frontend_basics: 'primary',
-      react_developer: 'info',
-      fullstack_js: 'success',
-      mobile_development: 'warning',
-      python_developer: 'secondary',
-      custom: 'dark'
-    };
-    return colors[testType] || 'secondary';
-  };
-
-  const getStatusColor = (status: string): string => {
-    const colors: { [key: string]: string } = {
-      completed: 'success',
-      inProgress: 'warning',
-      abandoned: 'danger',
-      expired: 'secondary'
-    };
-    return colors[status] || 'secondary';
-  };
-
-  const formatDuration = (seconds: number): string => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    
-    if (hours > 0) {
-      return `${hours}h ${minutes}m`;
-    }
-    return `${minutes}m`;
-  };
-
-  const formatLanguages = (languages: Language[]): string => {
-    return languages.length > 0 ? languages.join(', ') : 'General';
-  };
-
+  // Loading state
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#f8f9fa', paddingTop: '80px' }}>
@@ -191,33 +323,115 @@ const Dashboard: React.FC = () => {
     );
   }
 
+  const sessionStatus = getSessionStatus();
+
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#f8f9fa', paddingTop: '80px' }}>
       <Container>
-        {/* Header */}
         <Row>
           <Col lg={12}>
-            <div className="d-flex justify-content-between align-items-center mb-4">
-              <div>
-                <h1 className="h3 mb-1">
-                  Welcome back, <span className="text-primary">{user?.loginId}</span>!
-                </h1>
-                <p className="text-muted mb-0">
-                  Ready to take some assessments today?
-                </p>
-              </div>
-              <div className="d-flex align-items-center gap-3">
-                <Badge color="primary" className="px-3 py-2 fs-6">
-                  <i className="fas fa-user-graduate me-2"></i>
-                  Student
-                </Badge>
-                <Button color="outline-secondary" onClick={handleLogout}>
-                  <i className="fas fa-sign-out-alt me-2"></i>
-                  Logout
-                </Button>
-              </div>
-            </div>
+            <DashboardHeader user={user} onLogout={handleLogout} />
 
+            {/* Connection Status Alert */}
+            {connectionMessage && (
+              <Alert color={connectionMessage.type} className="mb-4">
+                <i className={`fas fa-${connectionMessage.icon} me-2`}></i>
+                {connectionMessage.message}
+                {!isConnected && (
+                  <Button size="sm" color={connectionMessage.type} className="ms-2" onClick={() => window.location.reload()}>
+                    Refresh Page
+                  </Button>
+                )}
+              </Alert>
+            )}
+
+            {/* Active Session Banner */}
+            {shouldShowSessionBanner() && (
+              <Alert color={
+                sessionStatus.isPaused ? "warning" :
+                  sessionStatus.timeRemaining <= 300 ? "danger" : "info"
+              } className="mb-4">
+                <div className="d-flex justify-content-between align-items-center">
+                  <div>
+                    <h5 className="alert-heading mb-2">
+                      <i className={`fas fa-${sessionStatus.isPaused ? 'pause-circle' : 'play-circle'} me-2`}></i>
+                      {sessionStatus.isPaused ? 'Paused Test Session' : 'Active Test Session'}
+                    </h5>
+
+                    {/* Session info */}
+                    {sessionStatus.sessionInfo && (
+                      <div className="mb-2">
+                        <strong>{sessionStatus.sessionInfo.title}</strong>
+                        <br />
+                        <small className="text-muted">
+                          Question {sessionStatus.questionIndex + 1} of {sessionStatus.sessionInfo.totalQuestions}
+                        </small>
+                      </div>
+                    )}
+
+                    {/* Status badges */}
+                    <div className="mb-2">
+                      <Badge color={sessionStatus.isPaused ? 'warning' : 'primary'} className="me-2">
+                        Status: {sessionStatus.status}
+                      </Badge>
+
+                      <Badge color={sessionStatus.isConnected ? 'success' : 'danger'} className="me-2">
+                        {sessionStatus.isConnected ? 'Connected' : 'Disconnected'}
+                      </Badge>
+
+                      {!sessionStatus.isTimerSynced && (
+                        <Badge color="warning" className="me-2">
+                          Timer Syncing...
+                        </Badge>
+                      )}
+                    </div>
+
+                    {/* Timer display */}
+                    <div className="mb-2">
+                      <span className={`fw-bold ${!sessionStatus.hasValidTimer ? 'text-muted' :
+                          sessionStatus.timeRemaining <= 60 ? 'text-danger' :
+                            sessionStatus.timeRemaining <= 300 ? 'text-warning' : 'text-info'
+                        }`}>
+                        <i className="fas fa-clock me-1"></i>
+                        Time Remaining: {formatTimeDisplay(sessionStatus.timeRemaining, sessionStatus.hasValidTimer)}
+                      </span>
+
+                      {sessionStatus.isPaused && (
+                        <span className="text-warning ms-2">(PAUSED)</span>
+                      )}
+
+                      {!sessionStatus.isTimerSynced && (
+                        <Spinner size="sm" className="ms-2" />
+                      )}
+                    </div>
+
+                    {/* Network warnings */}
+                    {!networkStatus.isOnline && (
+                      <div className="mb-2">
+                        <Badge color="warning">
+                          <i className="fas fa-wifi me-1"></i>
+                          Offline - Timer paused
+                        </Badge>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Action button */}
+                  <div>
+                    <Button
+                      color={sessionStatus.timeRemaining <= 300 ? "danger" : sessionStatus.isPaused ? "warning" : "info"}
+                      onClick={() => navigate(`/test-session/${sessionStatus.sessionId}`)}
+                    >
+                      <i className={`fas fa-${sessionStatus.isPaused ? 'play' : 'arrow-right'} me-2`}></i>
+                      {sessionStatus.isPaused ? 'Resume Test' :
+                        sessionStatus.timeRemaining <= 300 ? 'Continue NOW!' : 'Continue Test'}
+                    </Button>
+                  </div>
+                </div>
+              </Alert>
+            )}
+
+            {/* Error Alert */}
             {error && (
               <Alert color="danger" className="mb-4">
                 <i className="fas fa-exclamation-triangle me-2"></i>
@@ -233,267 +447,119 @@ const Dashboard: React.FC = () => {
           </Col>
         </Row>
 
-        {/* Stats Cards */}
-        <Row className="g-4 mb-5">
-          <Col md={3}>
-            <Card className="h-100 shadow-sm border-0">
-              <CardBody className="text-center">
-                <div 
-                  className="mx-auto mb-3 p-3 rounded-circle d-inline-flex align-items-center justify-content-center"
-                  style={{ 
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    width: '60px',
-                    height: '60px'
-                  }}
-                >
-                  <i className="fas fa-clipboard-list text-white" style={{ fontSize: '1.5rem' }}></i>
-                </div>
-                <h4 className="mb-1">{stats.totalTests}</h4>
-                <p className="text-muted small mb-0">Available Tests</p>
-              </CardBody>
-            </Card>
-          </Col>
-          
-          <Col md={3}>
-            <Card className="h-100 shadow-sm border-0">
-              <CardBody className="text-center">
-                <div 
-                  className="mx-auto mb-3 p-3 rounded-circle d-inline-flex align-items-center justify-content-center"
-                  style={{ 
-                    background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-                    width: '60px',
-                    height: '60px'
-                  }}
-                >
-                  <i className="fas fa-check-circle text-white" style={{ fontSize: '1.5rem' }}></i>
-                </div>
-                <h4 className="mb-1">{stats.completedTests}</h4>
-                <p className="text-muted small mb-0">Completed</p>
-              </CardBody>
-            </Card>
-          </Col>
+        {/* Dashboard Content */}
+        <StatsCards stats={stats} />
 
-          <Col md={3}>
-            <Card className="h-100 shadow-sm border-0">
-              <CardBody className="text-center">
-                <div 
-                  className="mx-auto mb-3 p-3 rounded-circle d-inline-flex align-items-center justify-content-center"
-                  style={{ 
-                    background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
-                    width: '60px',
-                    height: '60px'
-                  }}
-                >
-                  <i className="fas fa-trophy text-white" style={{ fontSize: '1.5rem' }}></i>
-                </div>
-                <h4 className="mb-1">{stats.passedTests}</h4>
-                <p className="text-muted small mb-0">Passed</p>
-              </CardBody>
-            </Card>
-          </Col>
-
-          <Col md={3}>
-            <Card className="h-100 shadow-sm border-0">
-              <CardBody className="text-center">
-                <div 
-                  className="mx-auto mb-3 p-3 rounded-circle d-inline-flex align-items-center justify-content-center"
-                  style={{ 
-                    background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-                    width: '60px',
-                    height: '60px'
-                  }}
-                >
-                  <i className="fas fa-chart-line text-white" style={{ fontSize: '1.5rem' }}></i>
-                </div>
-                <h4 className="mb-1">{stats.averageScore}</h4>
-                <p className="text-muted small mb-0">Avg Score</p>
-              </CardBody>
-            </Card>
-          </Col>
-        </Row>
-
-        {/* Available Tests */}
         <Row className="mb-5">
           <Col lg={12}>
-            <Card className="shadow-sm border-0">
-              <CardHeader className="bg-white">
-                <div className="d-flex justify-content-between align-items-center">
-                  <h5 className="mb-0">
-                    <i className="fas fa-clipboard-list me-2 text-primary"></i>
-                    Available Tests
-                  </h5>
-                  <Badge color="info">{availableTests.length} tests</Badge>
-                </div>
-              </CardHeader>
-              <CardBody>
-                {availableTests.length === 0 ? (
-                  <div className="text-center py-4">
-                    <i className="fas fa-clipboard text-muted mb-3" style={{ fontSize: '3rem' }}></i>
-                    <p className="text-muted">No tests available at the moment</p>
-                    <p className="small text-muted">Check back later for new assessments</p>
-                  </div>
-                ) : (
-                  <Row>
-                    {availableTests.slice(0, 6).map((test) => (
-                      <Col md={6} lg={4} key={test._id} className="mb-3">
-                        <Card className="h-100 border">
-                          <CardBody>
-                            <div className="d-flex justify-content-between align-items-start mb-2">
-                              <Badge color={getTestTypeColor(test.testType)} className="mb-2">
-                                {test.testType.replace('_', ' ')}
-                              </Badge>
-                              <small className="text-muted">
-                                {test.settings.timeLimit}min
-                              </small>
-                            </div>
-                            <CardTitle tag="h6" className="mb-2">
-                              {test.title}
-                            </CardTitle>
-                            <p className="text-muted small mb-3" style={{ height: '40px', overflow: 'hidden' }}>
-                              {test.description}
-                            </p>
-                            <div className="mb-3">
-                              <small className="text-muted d-block">
-                                <strong>Languages:</strong> {formatLanguages(test.languages)}
-                              </small>
-                              <small className="text-muted d-block">
-                                <strong>Attempts:</strong> {test.settings.attemptsAllowed}
-                              </small>
-                            </div>
-                            <Button 
-                              color="primary" 
-                              size="sm" 
-                              block
-                              onClick={() => handleStartTest(test._id)}
-                            >
-                              <i className="fas fa-play me-2"></i>
-                              Start Test
-                            </Button>
-                          </CardBody>
-                        </Card>
-                      </Col>
-                    ))}
-                  </Row>
-                )}
-              </CardBody>
-            </Card>
+            <AvailableTests
+              tests={availableTests}
+              onStartTest={handleStartTest}
+              loading={loading}
+            />
           </Col>
         </Row>
 
-        {/* Recent Activity */}
+        {/* UPDATED: Single RecentActivity component instead of two separate components */}
         <Row>
-          <Col lg={6}>
-            <Card className="shadow-sm border-0 h-100">
-              <CardHeader className="bg-white">
-                <h5 className="mb-0">
-                  <i className="fas fa-clock me-2 text-warning"></i>
-                  Recent Sessions
-                </h5>
-              </CardHeader>
-              <CardBody>
-                {recentSessions.length === 0 ? (
-                  <div className="text-center py-4">
-                    <i className="fas fa-history text-muted mb-3" style={{ fontSize: '2rem' }}></i>
-                    <p className="text-muted">No recent sessions</p>
-                  </div>
-                ) : (
-                  <div className="table-responsive">
-                    <Table size="sm" className="mb-0">
-                      <thead>
-                        <tr>
-                          <th>Test</th>
-                          <th>Status</th>
-                          <th>Time</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {recentSessions.slice(0, 5).map((session) => (
-                          <tr key={session.id}>
-                            <td>
-                              <small>Attempt #{session.attemptNumber}</small>
-                            </td>
-                            <td>
-                              <Badge color={getStatusColor(session.status)} size="sm">
-                                {session.status}
-                              </Badge>
-                            </td>
-                            <td>
-                              <small>{formatDuration(session.timeSpent)}</small>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </Table>
-                  </div>
-                )}
-              </CardBody>
-            </Card>
-          </Col>
-
-          <Col lg={6}>
-            <Card className="shadow-sm border-0 h-100">
-              <CardHeader className="bg-white">
-                <h5 className="mb-0">
-                  <i className="fas fa-chart-bar me-2 text-success"></i>
-                  Recent Results
-                </h5>
-              </CardHeader>
-              <CardBody>
-                {myResults.length === 0 ? (
-                  <div className="text-center py-4">
-                    <i className="fas fa-chart-bar text-muted mb-3" style={{ fontSize: '2rem' }}></i>
-                    <p className="text-muted">No results yet</p>
-                  </div>
-                ) : (
-                  <div className="table-responsive">
-                    <Table size="sm" className="mb-0">
-                      <thead>
-                        <tr>
-                          <th>Score</th>
-                          <th>Result</th>
-                          <th>Date</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {myResults.slice(0, 5).map((result) => (
-                          <tr key={result.id}>
-                            <td>
-                              <div className="d-flex align-items-center">
-                                <div style={{ width: '60px' }}>
-                                  <Progress 
-                                    value={(result.score.earnedPoints / result.score.totalPoints) * 100}
-                                    color={result.score.passed ? 'success' : 'danger'}
-                                    style={{ height: '8px' }}
-                                  />
-                                </div>
-                                <small className="ms-2">
-                                  {result.score.earnedPoints}/{result.score.totalPoints}
-                                </small>
-                              </div>
-                            </td>
-                            <td>
-                              <Badge 
-                                color={result.score.passed ? 'success' : 'danger'} 
-                                size="sm"
-                              >
-                                {result.score.passed ? 'Pass' : 'Fail'}
-                              </Badge>
-                            </td>
-                            <td>
-                              <small>
-                                {new Date(result.createdAt).toLocaleDateString()}
-                              </small>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </Table>
-                  </div>
-                )}
-              </CardBody>
-            </Card>
+          <Col lg={12}>
+            <RecentActivity sessions={recentSessions} />
           </Col>
         </Row>
+
+        {/* Active Session Conflict Modal */}
+        <Modal isOpen={showActiveSessionModal} toggle={() => setShowActiveSessionModal(false)}>
+          <ModalHeader toggle={() => setShowActiveSessionModal(false)}>
+            Active Test Session Found
+          </ModalHeader>
+          <ModalBody>
+            <div className="text-center mb-3">
+              <i className="fas fa-exclamation-triangle text-warning" style={{ fontSize: '3rem' }}></i>
+            </div>
+            <p className="text-center">
+              You have an active test session that can be resumed.
+            </p>
+            {sessionCheckResult?.testInfo && (
+              <div className="text-center mb-3">
+                <strong>{sessionCheckResult.testInfo.title}</strong>
+                <br />
+                <small className="text-muted">
+                  Progress: {sessionCheckResult.testInfo.answeredQuestions}/{sessionCheckResult.testInfo.totalQuestions} questions
+                </small>
+                <br />
+                <small className="text-info">
+                  Time Remaining: {sessionCheckResult.timeRemaining ?
+                    formatTimeDisplay(sessionCheckResult.timeRemaining, true) :
+                    'Loading...'
+                  }
+                </small>
+              </div>
+            )}
+            <p className="text-center text-muted">
+              Would you like to resume your current test or start a new one?
+            </p>
+          </ModalBody>
+          <ModalFooter>
+            <Button color="secondary" onClick={() => setShowActiveSessionModal(false)}>
+              Cancel
+            </Button>
+            <Button color="info" onClick={handleResumeSession}>
+              <i className="fas fa-play me-2"></i>
+              Resume Current Test
+            </Button>
+            <Button color="warning" onClick={handleAbandonAndStartNew}>
+              <i className="fas fa-plus me-2"></i>
+              Start New Test
+            </Button>
+          </ModalFooter>
+        </Modal>
+
+        {/* Rejoin Session Modal */}
+        <Modal isOpen={showRejoinModal} toggle={() => setShowRejoinModal(false)}>
+          <ModalHeader toggle={() => setShowRejoinModal(false)}>
+            {sessionStatus.isPaused ? 'Resume Paused Session?' : 'Resume Test Session?'}
+          </ModalHeader>
+          <ModalBody>
+            <div className="text-center mb-3">
+              <i className={`fas fa-${sessionStatus.isPaused ? 'pause-circle text-warning' : 'play-circle text-info'}`} style={{ fontSize: '3rem' }}></i>
+            </div>
+            {sessionCheckResult?.testInfo && (
+              <div className="text-center">
+                <p>You have {sessionStatus.isPaused ? 'a paused' : 'an active'} test session for:</p>
+                <h5>{sessionCheckResult.testInfo.title}</h5>
+                <div className="mb-3">
+                  <Badge color="primary" className="me-2">
+                    {sessionCheckResult.testInfo.answeredQuestions}/{sessionCheckResult.testInfo.totalQuestions} questions answered
+                  </Badge>
+                  <Badge color={sessionStatus.isPaused ? 'warning' : 'info'}>
+                    {sessionCheckResult.timeRemaining ?
+                      formatTimeDisplay(sessionCheckResult.timeRemaining, true) :
+                      'Loading...'
+                    } remaining
+                  </Badge>
+                  {sessionStatus.isPaused && (
+                    <Badge color="warning" className="ms-2">PAUSED</Badge>
+                  )}
+                </div>
+                <p className="text-muted">
+                  {sessionStatus.isPaused
+                    ? 'Your session was paused. You can continue where you left off.'
+                    : 'You can continue where you left off.'
+                  }
+                </p>
+              </div>
+            )}
+          </ModalBody>
+          <ModalFooter>
+            <Button color="secondary" onClick={() => setShowRejoinModal(false)}>
+              Not Now
+            </Button>
+            <Button color={sessionStatus.isPaused ? 'warning' : 'primary'} onClick={handleResumeSession}>
+              <i className="fas fa-play me-2"></i>
+              {sessionStatus.isPaused ? 'Resume Session' : 'Continue Test'}
+            </Button>
+          </ModalFooter>
+        </Modal>
       </Container>
     </div>
   );

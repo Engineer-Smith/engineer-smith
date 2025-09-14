@@ -1,329 +1,580 @@
-// src/types/index.ts - Types that exactly match backend models
+// src/types/index.ts - CORRECTED to align with actual backend implementation
 
 // =====================
-// Type Aliases (from backend enums)
-// =====================
-export type Role = "admin" | "instructor" | "student";
-export type QuestionType = "multipleChoice" | "trueFalse" | "codeChallenge" | "codeDebugging";
-export type Language =
-  | "javascript"
-  | "css"
-  | "html"
-  | "sql"
-  | "dart"
-  | "react"
-  | "reactNative"
-  | "flutter"
-  | "express"
-  | "python"
-  | "typescript"
-  | "json";
-export type Difficulty = "easy" | "medium" | "hard";
-export type TestStatus = "draft" | "active" | "archived";
-export type SessionStatus = "inProgress" | "completed" | "expired" | "abandoned";
-export type TestType = "frontend_basics" | "react_developer" | "fullstack_js" | "mobile_development" | "python_developer" | "custom";
-
-// Tags enum exactly as defined in backend Test.js
-export type Tags =
-  | 'html'
-  | 'css'
-  | 'javascript'
-  | 'dom'
-  | 'events'
-  | 'async-programming'
-  | 'promises'
-  | 'async-await'
-  | 'es6'
-  | 'closures'
-  | 'scope'
-  | 'hoisting'
-  | 'flexbox'
-  | 'grid'
-  | 'responsive-design'
-  | 'react'
-  | 'react-native'
-  | 'components'
-  | 'hooks'
-  | 'state-management'
-  | 'props'
-  | 'context-api'
-  | 'redux'
-  | 'react-router'
-  | 'jsx'
-  | 'virtual-dom'
-  | 'native-components'
-  | 'navigation'
-  | 'flutter'
-  | 'widgets'
-  | 'state-management-flutter'
-  | 'dart'
-  | 'navigation-flutter'
-  | 'ui-components'
-  | 'express'
-  | 'nodejs'
-  | 'rest-api'
-  | 'middleware'
-  | 'routing'
-  | 'authentication'
-  | 'authorization'
-  | 'jwt'
-  | 'express-middleware'
-  | 'sql'
-  | 'queries'
-  | 'joins'
-  | 'indexes'
-  | 'transactions'
-  | 'database-design'
-  | 'normalization'
-  | 'python'
-  | 'functions'
-  | 'classes'
-  | 'modules'
-  | 'list-comprehensions'
-  | 'decorators'
-  | 'generators'
-  | 'python-data-structures'
-  | 'variables'
-  | 'arrays'
-  | 'objects'
-  | 'loops'
-  | 'conditionals'
-  | 'algorithms'
-  | 'data-structures'
-  | 'error-handling'
-  | 'testing'
-  | 'mobile-development';
-
-// =====================
-// Core Interfaces (matching backend models exactly)
+// CORE TYPES - Export these first to avoid conflicts
 // =====================
 
-// --- Organization (matches backend Organization model) ---
-export interface Organization {
-  id: string;
-  name: string;
-  isSuperOrg: boolean;
-  inviteCode: string;
-  createdAt: string;
-  updatedAt: string;
-}
+// Export all common types and enums first
+export type {
+  Role,
+  Language,
+  QuestionType,
+  QuestionCategory,
+  Difficulty,
+  TestStatus,
+  SessionStatus,
+  QuestionStatus,
+  TestType,
+  Tags,
+  BaseEntity,
+  Timestamped,
+  UserAudited,
+  OrganizationScoped,
+  PaginationParams,
+  PaginatedResponse,
+  SortParams,
+  FilterParams,
+  User,
+  Organization,
+  TimeSpan,
+  AppError,
+  ValidationError,
+  AuthenticationError,
+  BusinessLogicError,
+  UIPreferences,
+  ThemeMode,
+  LoadingState,
+  AsyncState,
+  ConsoleLog
+} from './common';
 
-// --- User (matches backend User model) ---
-export interface User {
-  id: string;
-  loginId: string; // This will be the username
-  email?: string; // Optional email field
-  organizationId: string;
-  organization?: Organization;
-  role: Role;
-  isSSO: boolean;
-  ssoId?: string;
-  ssoToken?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-// --- Question (matches backend Question model exactly) ---
-export interface Question {
-  id: string;
-  title: string;
-  description: string;
-  type: QuestionType;
-  language?: Language;
-  organizationId?: string;
-  isGlobal: boolean;
-  options?: string[];
-  correctAnswer?: number | boolean;
-  testCases?: { input: string; output: string; hidden: boolean }[];
-  difficulty?: Difficulty;
-  status: TestStatus;
-  createdBy: string;
-  tags?: Tags[];
-  usageStats: {
-    timesUsed: number;
-    totalAttempts: number;
-    correctAttempts: number;
-    successRate: number;
-    averageTime: number;
-  };
-  createdAt: string;
-  updatedAt: string;
-}
-
-// --- Test Settings (matches backend Test.js settings schema exactly) ---
-export interface TestSettings {
-  timeLimit: number; // Required in backend
-  attemptsAllowed: number; // Required in backend
-  shuffleQuestions: boolean; // Default false in backend
-  useSections: boolean; // Default false in backend
-}
-
-// --- Test Section (matches backend Test.js sections schema exactly) ---
-export interface TestSection {
-  name: string; // Required in backend
-  timeLimit: number; // Required in backend
-  questions: { questionId: string; points: number }[]; // Array of question references
-}
-
-// --- Test (matches backend Test.js model exactly) ---
-export interface Test {
-  _id: string;
-  title: string; // Required
-  description: string; // Required
-  testType: TestType; // Enum, default 'custom'
-  languages: Language[]; // Array of Language enum values, default []
-  tags: Tags[]; // Array of Tags enum values, default []
-  settings: TestSettings; // Required nested object
-  sections?: TestSection[]; // Optional, used when settings.useSections = true
-  questions?: { questionId: string; points: number }[]; // Optional, used when settings.useSections = false
-  organizationId?: string; // ObjectId reference, null for global tests
-  isGlobal: boolean; // Default false
-  status: TestStatus; // Enum, default 'draft'
-  createdBy: string; // ObjectId reference, required
-  stats: {
-    totalAttempts: number; // Default 0
-    averageScore: number; // Default 0
-    passRate: number; // Default 0
-  };
-  createdAt: string;
-  updatedAt: string;
-}
-
-// --- Test Session Question (matches backend model) ---
-export interface TestSessionQuestion {
-  questionId: string;
-  answer?: number | boolean | string;
-  isCorrect?: boolean;
-  pointsAwarded?: number;
-  timeSpent: number;
-  sectionIndex?: number;
-  sectionName?: string;
-  codeSubmissions?: { code: string; submittedAt: string; passed: boolean; error?: string }[];
-}
-
-// --- Test Session Score (matches backend model) ---
-export interface TestSessionScore {
-  totalPoints: number;
-  earnedPoints: number;
-  passed: boolean;
-}
-
-// --- Test Session (matches backend model) ---
-export interface TestSession {
-  id: string;
-  testId: string;
-  userId: string;
-  organizationId: string;
-  attemptNumber: number;
-  status: SessionStatus;
-  startedAt: string;
-  completedAt?: string;
-  timeSpent: number;
-  questions: TestSessionQuestion[];
-  score: TestSessionScore;
-  completedSections: number[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-// --- Result (Snapshot of TestSession) ---
-export interface Result {
-  id: string;
-  sessionId: string;
-  testId: string;
-  userId: string;
-  organizationId: string;
-  attemptNumber: number;
-  status: SessionStatus;
-  completedAt?: string;
-  timeSpent: number;
-  questions: TestSessionQuestion[];
-  score: TestSessionScore;
-  createdAt: string;
-  updatedAt: string;
-}
+// Export validation utilities
+export {
+  VALID_COMBINATIONS,
+  QUESTION_TYPE_CATEGORY_RULES,
+  isValidRole,
+  isValidLanguage,
+  isValidQuestionType,
+  isValidQuestionCategory,
+  isValidDifficulty,
+  isValidTestStatus,
+  isValidSessionStatus,
+  isValidTestType,
+  isValidQuestionStatus,
+  getValidCategories,
+  isValidLanguageCategoryCombo,
+  isValidQuestionTypeForCategory,
+  getAllowedQuestionTypes,
+  getAllValidTags,
+  getTagsByCategory,
+  formatTimeSpan,
+  formatDuration,
+  formatTimeRemaining,
+  hasHigherRole,
+  ROLE_HIERARCHY,
+  DEFAULT_PAGINATION,
+  MAX_PAGINATION_LIMIT
+} from './common';
 
 // =====================
-// Analytics (matches backend structure)
+// AUTHENTICATION - Export with prefixes to avoid conflicts
 // =====================
-export interface AnalyticsResult {
-  testId: string;
-  questionId?: string;
-  totalResults: number;
-  averageScore: number;
-  passRate: number;
-  averageTime: number;
-  questionSuccessRate?: number;
-  questionAverageTime?: number;
-  questionOptionStats?: number[];
-}
 
-export interface UserAnalytics {
-  userId: string;
-  organizationId: string;
-  totalTests: number;
-  averageScore: number;
-  passRate: number;
-  averageTime: number;
-  tests: { testId: string; attemptNumber: number; score: number; passed: boolean; timeSpent: number }[];
-}
+export type {
+  AuthState,
+  AuthContext,
+  LoginCredentials,
+  RegisterData,
+  SSOData,
+  AuthResult,
+  AuthError,
+  SessionInfo,
+  RefreshTokenData,
+  InviteCodeValidation,
+  Permission,
+  RolePermissions,
+  AccessControl,
+  AuthenticatedUser,
+  LoginFormData,
+  RegisterFormData,
+  FormErrors,
+  FormValidationResult,
+  PasswordResetRequest,
+  PasswordResetData,
+  PasswordChangeData,
+  ProfileUpdateData,
+  ProfileValidation,
+  SSOProvider,
+  SSOCallback,
+  SSOUser,
+  SecurityEvent,
+  AuditLog,
+  ProtectedRouteProps,
+  RoleCheck,
+  ApiToken,
+  CreateApiTokenRequest,
+  ApiTokenResponse
+} from './auth';
 
-export interface SectionAnalytics {
-  testId: string;
-  sectionIndex: number;
-  sectionName: string;
-  totalQuestions: number;
-  averageScore: number;
-  successRate: number;
-  averageTime: number;
-}
+export type {
+  ResourceType,
+  ActionType
+} from './auth';
+
+export {
+  getRolePermissions,
+  canAccessOrganizationContent
+} from './auth';
 
 // =====================
-// API Response Wrapper (matches backend response format)
+// QUESTION TYPES
 // =====================
-export interface ApiResponse<T> {
+
+export type {
+  Question,
+  CreateQuestionData,
+  UpdateQuestionData,
+  QuestionTestRequest,
+  QuestionTestResult,
+  QuestionStatsResponse,
+  QuestionListResponse,
+  QuestionListItem,
+  QuestionFilters,
+  TestCase,
+  CodeConfig,
+  QuestionTypeConfig
+} from './question';
+
+export {
+  validateQuestionBasics,
+  validateQuestionContent,
+  validateQuestionData,
+  isQuestionValid,
+  getQuestionTypeConfig
+} from './question';
+
+// =====================
+// TEST TYPES
+// =====================
+
+export type {
+  TestSettings,
+  TestQuestionReference,
+  TestSection,
+  TestStats,
+  Test,
+  CreateTestRequest,
+  UpdateTestRequest,
+  TestFilters,
+  TestSearchResponse,
+  TestPreview,
+  TestWithQuestions,
+  TestSectionWithQuestions,
+  TestQuestionWithData,
+  TestTemplate,
+  TestAnalytics,
+  TestValidationResult,
+  TestDraft,
+  CreateTestResponse,
+  UpdateTestResponse,
+  DeleteTestResponse,
+  TestValidationResponse
+} from './test';
+
+export {
+  isUsingSections as isTestUsingSections, // RENAMED to avoid conflict
+  hasQuestions,
+  isReadyForActivation,
+  isGlobalTest,
+  isSectionedTest,
+  isNonSectionedTest,
+  getTotalQuestions,
+  getTotalPoints,
+  estimateTestDuration,
+  getDifficultyRating,
+  toTestPreview,
+  validateTest
+} from './test';
+
+// =====================
+// SESSION TYPES (CORRECTED - Updated with actual backend structure)
+// =====================
+
+export type {
+  // Core session types
+  TestSession,
+  TestSnapshot,
+  TestSessionQuestion,
+  TestSessionSection,
+  QuestionData,
+  SessionFinalScore,
+
+  // Server action response (CORRECTED - includes all actual response types)
+  ServerActionResponse,
+  SubmitAnswerRequest,
+
+  // Navigation context (CORRECTED - matches buildNavigationContext)
+  NavigationContext,
+
+  // API response types (CORRECTED - matches actual controller returns)
+  StartSessionResponse,
+  CurrentQuestionResponse,
+  CheckExistingSessionResponse,
+  RejoinSessionResponse,
+
+  // Conflict handling (CORRECTED - matches actual error handling)
+  StartSessionConflictResponse,
+  SessionConflictState,
+
+  // Request types
+  StartSessionRequest,
+  SubmitSessionRequest,
+
+  // Hook interfaces
+  UseSessionRejoinOptions,
+  UseSessionRejoinReturn,
+
+  // Component props
+  RejoinModalProps,
+  StartTestButtonProps
+} from './session';
+
+export {
+  // Type guards
+  isSessionInProgress,
+  isSessionCompleted,
+  isUsingSections as isSessionUsingSections,
+  isConflictResponse,
+  hasExistingSession,
+
+  // Utility functions
+  formatTimeRemaining as formatSessionTime,
+  formatProgress,
+  calculateProgressPercentage,
+  canRejoinSession,
+  shouldShowRejoinOption
+} from './session';
+
+// =====================
+// SOCKET TYPES (CORRECTED - Updated with actual backend events)
+// =====================
+
+export type {
+  // Base socket types
+  BaseSocketEvent,
+  SocketConnectionState,
+  SocketConnectionInfo,
+  SocketServiceConfig,
+  SocketServiceCallbacks,
+  ISocketService,
+  
+  // Session lifecycle events (CORRECTED - matches actual socketService.js)
+  SessionJoinedEvent,
+  SessionRejoinedEvent,          // ADDED - backend sends this
+  SessionPausedEvent,            // ADDED - backend sends this
+  SessionResumedEvent,           // ADDED - backend sends this
+  SessionErrorEvent,
+  
+  // Timer events (CORRECTED - matches actual timerService.js)
+  TimerSyncEvent,               // RENAMED from TimerUpdateEvent
+  TimerWarningEvent,            // ADDED - backend sends this
+  
+  // Test progress events
+  SectionExpiredEvent,
+  TestCompletedEvent,
+  
+  // Answer flow events (ADDED - backend supports socket-based submission)
+  AnswerProcessedEvent,
+  AnswerErrorEvent,
+  
+  // Request types (CORRECTED - matches actual backend expectations)
+  JoinTestSessionRequest,
+  LeaveTestSessionRequest,
+  RejoinSessionRequest,
+  SubmitAnswerRequest as SocketSubmitAnswerRequest,  // RENAMED to avoid conflict
+  TimerSyncRequest,             // ADDED - backend supports this
+  
+  // Hook types
+  UseSocketOptions,
+  UseSocketReturn,
+  UseTimerOptions,
+  UseTimerReturn,
+  
+  // Utility types
+  SocketHealth,
+  SocketEventName,
+  
+  // Event aggregation types (CORRECTED)
+  SessionLifecycleEvent,
+  TimerEvent,
+  TestProgressEvent,
+  AnswerFlowEvent,              // ADDED
+  AllSessionEvents,
+  
+} from './socket';
+
+export {
+  SOCKET_EVENTS,
+  // Type guards (CORRECTED - updated names)
+  isSessionEvent,
+  isTimerSyncEvent,             // RENAMED from isTimerUpdateEvent
+  isTimerWarningEvent,          // ADDED
+  isSectionExpiredEvent,
+  isTestCompletedEvent,
+  isSessionErrorEvent,
+  isSessionPausedEvent,         // ADDED
+  isSessionResumedEvent,        // ADDED
+  
+  // Legacy compatibility
+  isTimerSyncEvent as isTimerUpdateEvent  // DEPRECATED alias
+} from './socket';
+
+// =====================
+// RESULT AND ANALYTICS TYPES
+// =====================
+
+export type {
+  Result,
+  ResultQuestion,
+  ResultScore,
+  ResultAnalytics,
+  UserAnalytics,
+  UserTestResult,
+  SectionAnalytics,
+  QuestionAnalytics,
+  ExtendedResultAnalytics,
+  PerformanceMetric,
+  ExtendedUserAnalytics,
+  LanguagePerformance,
+  ScoreProgressionPoint,
+  ActivityPattern,
+  AnalyticsFilters,
+  PaginatedAnalyticsResponse,
+  OrganizationSummary,
+  TestSummary,
+  ExportableAnalytics
+} from './result';
+
+export {
+  isCompletedResult,
+  isPassedResult,
+  isPaginatedResponse,
+  calculateSuccessRate,
+  formatDuration as formatResultDuration,
+  getPerformanceGrade,
+  getTrendDirection,
+  groupResultsByPeriod
+} from './result';
+
+// =====================
+// API TYPES (CORRECTED - Updated with actual backend endpoints)
+// =====================
+
+export type {
+  // Authentication
+  LoginRequest,
+  LoginResponse,
+  RegisterRequest,
+  RegisterResponse,
+  RefreshTokenResponse,
+  ValidateInviteRequest,
+  ValidateInviteResponse,
+  GetCurrentUserResponse,
+  AuthStatusResponse,
+
+  // Questions
+  CreateQuestionRequest,
+  CreateQuestionResponse,
+  GetQuestionResponse,
+  UpdateQuestionResponse,
+  DeleteQuestionResponse,
+  TestQuestionRequest as ApiTestQuestionRequest,
+  TestQuestionResponse as ApiTestQuestionResponse,
+  GetQuestionStatsResponse,
+  GetAllQuestionsResponse,
+
+  // Tests
+  CreateTestResponse as ApiCreateTestResponse,
+  GetTestResponse,
+  UpdateTestResponse as ApiUpdateTestResponse,
+  DeleteTestResponse as ApiDeleteTestResponse,
+
+  // Test Sessions (CORRECTED - updated with actual backend structure)
+  SessionStartRequest,          // CORRECTED - includes forceNew flag
+  SessionStartResponse as ApiSessionStartResponse,
+  CurrentQuestionResponse as ApiCurrentQuestionResponse,
+  NavigationRequest as ApiNavigationRequest,
+  NavigationResponse,
+  SaveAnswerRequest as ApiSaveAnswerRequest,
+  SaveAnswerResponse as ApiSaveAnswerResponse,
+  SessionOverviewResponse as ApiSessionOverviewResponse,
+  SubmitSessionRequest as ApiSubmitSessionRequest,
+  SubmitSessionResponse as ApiSubmitSessionResponse,
+  AbandonSessionResponse,
+  TimeSyncResponse as ApiTimeSyncResponse,
+
+  // Analytics (CORRECTED - matches adminService.js)
+  QuestionAnalyticsResponse,
+
+  // General API types
+  ApiParams,
+  SuccessResponse,
+  ErrorResponse
+} from './api';
+
+// =====================
+// UI COMPONENT TYPES
+// =====================
+
+export type {
+  FormState,
+  ValidationResult,
+  FontSize,
+  ColorBlindMode,
+  SelectOption,
+  LanguageOption,
+  QuestionTypeOption,
+  CategoryOption,
+  DifficultyOption,
+  TagOption,
+  TableColumn,
+  TableProps,
+  PaginationProps,
+  ModalProps,
+  ConfirmDialogProps,
+  NotificationType,
+  Notification,
+  CodeEditorProps,
+  StatCard,
+  ChartData,
+  SearchState,
+  SearchProps,
+  UIWizardStep,
+  UIWizardState,
+  StepperProps,
+  ButtonProps,
+  InputProps,
+  SelectProps,
+  TableAction,
+  BulkAction,
+  FilterOption,
+  FilterGroup,
+  FilterState,
+  ActiveFilter,
+  NavigationItem,
+  BreadcrumbItem,
+  TabItem,
+  DashboardStats,
+  DashboardFeature,
+  DashboardStatCardProps,
+  DashboardFeatureCardProps,
+  QuickActionsProps,
+  QuickActionType
+} from './ui';
+
+// =====================
+// CREATE TEST WIZARD TYPES
+// =====================
+
+export type {
+  CreateTestData,
+  WizardStepProps,
+  WizardTestTemplate,
+  WizardState,
+  WizardStep,
+  WizardConfig
+} from './createTest';
+
+export {
+  createTestPayload,
+  createEmptyTestData,
+  createTestFromTemplate,
+  validateWizardTestData,
+  isStepValid,
+  getWizardProgress,
+  hasUnsavedChanges,
+  createInitialWizardState,
+  updateWizardState,
+  getWizardTestTemplates,
+  getTestScopeText,
+  canCreateGlobalTests,
+  getTotalQuestionCount,
+  isUsingSection
+} from './createTest';
+
+// =====================
+// UTILITY TYPE HELPERS (Generic helpers only)
+// =====================
+
+// Helper to make certain fields required
+export type RequiredFields<T, K extends keyof T> = T & Required<Pick<T, K>>;
+
+// Helper to make certain fields optional
+export type OptionalFields<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
+
+// Helper for API responses
+export type ApiResponse<T> = {
+  data?: T;
   error?: boolean;
   status?: number;
   message?: string;
+};
+
+// Helper for paginated API responses
+export type PaginatedApiResponse<T> = ApiResponse<{
+  items: T[];
+  totalCount: number;
+  totalPages: number;
+  currentPage: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+}>;
+
+// =====================
+// LEGACY COMPATIBILITY (CORRECTED - Only types that exist)
+// =====================
+
+// CORRECTED: Only use types that actually exist in session.ts
+export type { SessionFinalScore as TestSessionScore } from './session';
+
+// CORRECTED: Define simplified types that match actual backend capability
+export type CodeExecutionResult = {
+  success: boolean;
+  output?: string;
+  error?: string;
+  testResults?: Array<{
+    passed: boolean;
+    input?: any;
+    expected?: any;
+    actual?: any;
+    error?: string;
+  }>;
+  executionTime?: number;
+};
+
+export type BlankAnswer = {
+  blankId: string;
+  value: string;
+  isCorrect?: boolean;
+};
+
+// =====================
+// BACKWARD COMPATIBILITY ALIASES (CORRECTED)
+// =====================
+
+// Socket event aliases for backward compatibility
+export type { TimerSyncEvent as TimerUpdateEvent } from './socket';
+
+// Session response aliases
+export type { StartSessionResponse as SessionStartResponse } from './session';
+export type { CheckExistingSessionResponse as ExistingSessionCheckResponse } from './session';
+export type { RejoinSessionResponse as SessionRejoinResponse } from './session';
+
+// Common action result type
+export type ActionResult<T = any> = {
+  success: boolean;
   data?: T;
-}
+  error?: string;
+  message?: string;
+};
 
 // =====================
-// Frontend-Only Types (for UI components, not sent to backend)
+// CONVENIENCE ALIASES (No re-exports to avoid conflicts)
 // =====================
 
-// Type guards for runtime validation
-export const isValidTestType = (value: any): value is TestType => {
-  return ['frontend_basics', 'react_developer', 'fullstack_js', 'mobile_development', 'python_developer', 'custom'].includes(value);
+// Simple success/error response type
+export type SimpleResponse = {
+  success: boolean;
+  message?: string;
+  error?: string;
 };
-
-export const isValidLanguage = (value: any): value is Language => {
-  return ['javascript', 'css', 'html', 'sql', 'dart', 'react', 'reactNative', 'flutter', 'express', 'python', 'typescript', 'json'].includes(value);
-};
-
-export const isValidTestStatus = (value: any): value is TestStatus => {
-  return ['draft', 'active', 'archived'].includes(value);
-};
-
-// UI-only types for components (these don't go to backend)
-export type ValidationLevel = "error" | "warning" | "suggestion" | "info";
-
-export interface ValidationItem {
-  type: ValidationLevel;
-  field: string;
-  message: string;
-}
-
-export interface LanguageInfo {
-  value: Language;
-  name: string;
-  color: string;
-  category: string;
-}
-
-export interface TagInfo {
-  value: Tags;
-  name: string;
-  category: string;
-  color: string;
-}

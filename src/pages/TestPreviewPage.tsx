@@ -43,24 +43,20 @@ const TestPreviewPage: React.FC = () => {
             console.log('TestPreviewPage: Fetching test with questions for ID:', testId);
             console.log('TestPreviewPage: User role:', user?.role);
 
-            const response = await apiService.getTestWithQuestions(testId);
+            // FIXED: getTestWithQuestions returns Test directly, no wrapper
+            const test = await apiService.getTestWithQuestions(testId);
 
-            console.log('TestPreviewPage: API response:', response);
+            console.log('TestPreviewPage: Test data received:', test);
+            console.log('TestPreviewPage: Test has sections?', test?.settings?.useSections);
+            console.log('TestPreviewPage: Sections:', test?.sections);
+            console.log('TestPreviewPage: Questions:', test?.questions);
 
-            if (response.error) {
-                throw new Error(response.message || 'Failed to fetch test');
-            }
-
-            console.log('TestPreviewPage: Test data received:', response.data);
-            console.log('TestPreviewPage: Test has sections?', response.data?.settings?.useSections);
-            console.log('TestPreviewPage: Sections:', response.data?.sections);
-            console.log('TestPreviewPage: Questions:', response.data?.questions);
-
-            if (response.data) {
-                setTest(response.data);
-            } else {
+            if (!test || !test._id) {
                 throw new Error('No test data received');
             }
+
+            setTest(test);
+
         } catch (error: any) {
             console.error('TestPreviewPage: Error fetching test:', error);
             setError(error.message || 'Failed to load test preview');

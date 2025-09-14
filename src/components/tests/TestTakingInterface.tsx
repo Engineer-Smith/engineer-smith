@@ -104,7 +104,7 @@ const TestTakingInterface: React.FC<TestTakingInterfaceProps> = ({
           if (question) {
             flattened.push({
               ...question,
-              id: question.id,
+              _id: question._id,
               points: questionRef.points,
               sectionIndex,
               sectionName: section.name,
@@ -121,7 +121,7 @@ const TestTakingInterface: React.FC<TestTakingInterfaceProps> = ({
         if (question) {
           flattened.push({
             ...question,
-            id: question.id,
+            _id: question._id,
             points: questionRef.points,
             questionIndex: index
           });
@@ -166,7 +166,7 @@ const TestTakingInterface: React.FC<TestTakingInterfaceProps> = ({
 
   const handleCodeChange = (code: string) => {
     if (!isPreviewMode && currentQuestion) {
-      handleAnswerChange(currentQuestion.id, code);
+      handleAnswerChange(currentQuestion._id, code);
     }
   };
 
@@ -241,7 +241,7 @@ const TestTakingInterface: React.FC<TestTakingInterfaceProps> = ({
             </p>
             <div className="mt-3">
               <small className="text-muted d-block mb-2">Debug info:</small>
-              <small className="text-muted d-block">Test ID: {test._id}</small>
+              <small className="text-muted d-block">Test _id: {test._id}</small>
               <small className="text-muted d-block">Use Sections: {test.settings?.useSections ? 'Yes' : 'No'}</small>
               <small className="text-muted d-block">Sections Count: {test.sections?.length || 0}</small>
               <small className="text-muted d-block">Questions Count: {test.questions?.length || 0}</small>
@@ -443,16 +443,16 @@ const TestTakingInterface: React.FC<TestTakingInterfaceProps> = ({
                           check 
                           className="d-flex align-items-start p-3 border rounded cursor-pointer hover-bg-light"
                           style={{ 
-                            backgroundColor: !isPreviewMode && answers[currentQuestion.id] === index + 1 ? '#e3f2fd' : 'transparent',
-                            borderColor: !isPreviewMode && answers[currentQuestion.id] === index + 1 ? '#1976d2' : '#dee2e6'
+                            backgroundColor: !isPreviewMode && answers[currentQuestion._id] === index + 1 ? '#e3f2fd' : 'transparent',
+                            borderColor: !isPreviewMode && answers[currentQuestion._id] === index + 1 ? '#1976d2' : '#dee2e6'
                           }}
                         >
                           <Input
                             type="radio"
-                            name={`question-${currentQuestion.id}`}
+                            name={`question-${currentQuestion._id}`}
                             value={index + 1}
-                            checked={!isPreviewMode ? answers[currentQuestion.id] === index + 1 : false}
-                            onChange={() => handleAnswerChange(currentQuestion.id, index + 1)}
+                            checked={!isPreviewMode ? answers[currentQuestion._id] === index + 1 : false}
+                            onChange={() => handleAnswerChange(currentQuestion._id, index + 1)}
                             disabled={isPreviewMode}
                             className="me-3 mt-1"
                           />
@@ -475,15 +475,15 @@ const TestTakingInterface: React.FC<TestTakingInterfaceProps> = ({
                         check 
                         className="d-flex align-items-center p-3 border rounded cursor-pointer hover-bg-light"
                         style={{ 
-                          backgroundColor: !isPreviewMode && answers[currentQuestion.id] === true ? '#e8f5e8' : 'transparent',
-                          borderColor: !isPreviewMode && answers[currentQuestion.id] === true ? '#4caf50' : '#dee2e6'
+                          backgroundColor: !isPreviewMode && answers[currentQuestion._id] === true ? '#e8f5e8' : 'transparent',
+                          borderColor: !isPreviewMode && answers[currentQuestion._id] === true ? '#4caf50' : '#dee2e6'
                         }}
                       >
                         <Input
                           type="radio"
-                          name={`question-${currentQuestion.id}`}
-                          checked={!isPreviewMode ? answers[currentQuestion.id] === true : false}
-                          onChange={() => handleAnswerChange(currentQuestion.id, true)}
+                          name={`question-${currentQuestion._id}`}
+                          checked={!isPreviewMode ? answers[currentQuestion._id] === true : false}
+                          onChange={() => handleAnswerChange(currentQuestion._id, true)}
                           disabled={isPreviewMode}
                           className="me-3"
                         />
@@ -499,15 +499,15 @@ const TestTakingInterface: React.FC<TestTakingInterfaceProps> = ({
                         check 
                         className="d-flex align-items-center p-3 border rounded cursor-pointer hover-bg-light"
                         style={{ 
-                          backgroundColor: !isPreviewMode && answers[currentQuestion.id] === false ? '#ffebee' : 'transparent',
-                          borderColor: !isPreviewMode && answers[currentQuestion.id] === false ? '#f44336' : '#dee2e6'
+                          backgroundColor: !isPreviewMode && answers[currentQuestion._id] === false ? '#ffebee' : 'transparent',
+                          borderColor: !isPreviewMode && answers[currentQuestion._id] === false ? '#f44336' : '#dee2e6'
                         }}
                       >
                         <Input
                           type="radio"
-                          name={`question-${currentQuestion.id}`}
-                          checked={!isPreviewMode ? answers[currentQuestion.id] === false : false}
-                          onChange={() => handleAnswerChange(currentQuestion.id, false)}
+                          name={`question-${currentQuestion._id}`}
+                          checked={!isPreviewMode ? answers[currentQuestion._id] === false : false}
+                          onChange={() => handleAnswerChange(currentQuestion._id, false)}
                           disabled={isPreviewMode}
                           className="me-3"
                         />
@@ -542,7 +542,7 @@ const TestTakingInterface: React.FC<TestTakingInterfaceProps> = ({
                         value={
                           isPreviewMode 
                             ? currentQuestion.options?.[0] || `// ${currentQuestion.type === 'codeDebugging' ? 'Fix this code' : 'Write your solution here'}`
-                            : answers[currentQuestion.id] || currentQuestion.options?.[0] || ''
+                            : answers[currentQuestion._id] || currentQuestion.options?.[0] || ''
                         }
                         onChange={(value) => handleCodeChange(value || '')}
                         options={{
@@ -576,7 +576,7 @@ const TestTakingInterface: React.FC<TestTakingInterfaceProps> = ({
                   <div>
                     {!isPreviewMode && (
                       <span className="text-muted small">
-                        {answers[currentQuestion.id] !== undefined ? (
+                        {answers[currentQuestion._id] !== undefined ? (
                           <span className="text-success">
                             <CheckCircle size={14} className="me-1" />
                             Answered
@@ -593,7 +593,7 @@ const TestTakingInterface: React.FC<TestTakingInterfaceProps> = ({
                   
                   {!isPreviewMode && (
                     <div className="d-flex gap-2">
-                      <Button color="outline-warning" size="sm" onClick={() => handleAnswerChange(currentQuestion.id, undefined)}>
+                      <Button color="outline-warning" size="sm" onClick={() => handleAnswerChange(currentQuestion._id, undefined)}>
                         Clear Answer
                       </Button>
                       {currentQuestionIndex === totalQuestions - 1 && (

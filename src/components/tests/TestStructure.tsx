@@ -100,7 +100,7 @@ const TestStructure: React.FC<WizardStepProps> = ({
   const [availableQuestions, setAvailableQuestions] = useState<number>(0);
   const [difficultyDistribution, setDifficultyDistribution] = useState<DifficultyDistribution>({
     easy: 40,
-    medium: 40, 
+    medium: 40,
     hard: 20
   });
   const [questionStats, setQuestionStats] = useState<QuestionStats | null>(null);
@@ -111,19 +111,20 @@ const TestStructure: React.FC<WizardStepProps> = ({
     const fetchQuestionStats = async () => {
       try {
         setLoadingStats(true);
-        const response = await apiService.getQuestionStats();
-        
-        if (response.error || !response.data) {
-          console.error('Failed to fetch question stats:', response.message);
+        // FIXED: getQuestionStats returns data directly, no wrapper
+        const questionStats = await apiService.getQuestionStats();
+
+        if (!questionStats || !questionStats.totals) {
+          console.error('Failed to fetch question stats: Invalid data received');
           return;
         }
 
-        setQuestionStats(response.data);
-        
+        setQuestionStats(questionStats);
+
         // Update difficulty distribution based on real data
-        const { difficultyBreakdown } = response.data.totals;
+        const { difficultyBreakdown } = questionStats.totals;
         const total = difficultyBreakdown.easy + difficultyBreakdown.medium + difficultyBreakdown.hard;
-        
+
         if (total > 0) {
           setDifficultyDistribution({
             easy: Math.round((difficultyBreakdown.easy / total) * 100),
@@ -163,28 +164,32 @@ const TestStructure: React.FC<WizardStepProps> = ({
           params.language = testData.languages[0];
         }
 
+        // FIXED: getPaginatedQuestions returns data directly, no wrapper
         const response = await apiService.getPaginatedQuestions(params);
-        
-        if (!response.error && response.data) {
-          const questionCount = response.data.totalCount || 0;
-          setAvailableQuestions(questionCount);
-          
-          // Calculate estimated duration based on real question count and difficulty
-          const baseTimePerQuestion = 2; // minutes
-          const difficultyMultipliers = {
-            easy: 1,
-            medium: 1.5,
-            hard: 2.5
-          };
-          
-          const weightedTime = questionCount * (
-            (difficultyDistribution.easy / 100 * baseTimePerQuestion * difficultyMultipliers.easy) +
-            (difficultyDistribution.medium / 100 * baseTimePerQuestion * difficultyMultipliers.medium) +
-            (difficultyDistribution.hard / 100 * baseTimePerQuestion * difficultyMultipliers.hard)
-          );
-          
-          setEstimatedDuration(Math.ceil(weightedTime));
+
+        if (!response || typeof response.totalCount !== 'number') {
+          console.error('Failed to get question count: Invalid response');
+          return;
         }
+
+        const questionCount = response.totalCount;
+        setAvailableQuestions(questionCount);
+
+        // Calculate estimated duration based on real question count and difficulty
+        const baseTimePerQuestion = 2; // minutes
+        const difficultyMultipliers = {
+          easy: 1,
+          medium: 1.5,
+          hard: 2.5
+        };
+
+        const weightedTime = questionCount * (
+          (difficultyDistribution.easy / 100 * baseTimePerQuestion * difficultyMultipliers.easy) +
+          (difficultyDistribution.medium / 100 * baseTimePerQuestion * difficultyMultipliers.medium) +
+          (difficultyDistribution.hard / 100 * baseTimePerQuestion * difficultyMultipliers.hard)
+        );
+
+        setEstimatedDuration(Math.ceil(weightedTime));
       } catch (error) {
         console.error('Error calculating available questions:', error);
       }
@@ -220,10 +225,10 @@ const TestStructure: React.FC<WizardStepProps> = ({
 
   const applyRecommendedSettings = (): void => {
     const template = testData.testType;
-    
+
     // Base recommendations on real available questions
-    const baseTimeLimit = availableQuestions > 0 ? 
-      Math.max(30, Math.min(120, availableQuestions * 2.5)) : 
+    const baseTimeLimit = availableQuestions > 0 ?
+      Math.max(30, Math.min(120, availableQuestions * 2.5)) :
       45;
 
     const recommendations: Record<TestType, TestRecommendations> = {
@@ -266,7 +271,7 @@ const TestStructure: React.FC<WizardStepProps> = ({
     };
 
     const recommended = recommendations[template] || recommendations.custom;
-    
+
     setTestData({
       ...testData,
       settings: {
@@ -320,11 +325,11 @@ const TestStructure: React.FC<WizardStepProps> = ({
   const getTimeLimitSuggestion = (): TimeSuggestion => {
     const timeLimit = testData.settings?.timeLimit || 0;
     const estimated = estimatedDuration;
-    
+
     if (estimated === 0) {
       return { type: 'info', message: 'Configure test content first' };
     }
-    
+
     if (timeLimit < estimated * 0.8) {
       return { type: 'warning', message: 'May be too short for thorough completion' };
     } else if (timeLimit > estimated * 1.5) {
@@ -416,22 +421,21 @@ const TestStructure: React.FC<WizardStepProps> = ({
 
               <FormGroup>
                 <Label className="fw-bold mb-3">Choose your test structure:</Label>
-                
+
                 <Row className="g-3">
                   {/* Single Section Option */}
                   <Col md={6}>
-                    <Card 
-                      className={`border-2 h-100 cursor-pointer ${
-                        testData.settings?.useSections === false ? 'border-primary bg-primary bg-opacity-10' : 'border-light'
-                      }`}
+                    <Card
+                      className={`border-2 h-100 cursor-pointer ${testData.settings?.useSections === false ? 'border-primary bg-primary bg-opacity-10' : 'border-light'
+                        }`}
                       onClick={() => handleTestTypeChange(false)}
                       style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
                     >
                       <CardBody className="text-center">
                         <div className="mb-3">
-                          <FileText 
-                            size={48} 
-                            className={testData.settings?.useSections === false ? 'text-primary' : 'text-muted'} 
+                          <FileText
+                            size={48}
+                            className={testData.settings?.useSections === false ? 'text-primary' : 'text-muted'}
                           />
                         </div>
                         <h6 className="mb-2">Single Test</h6>
@@ -466,18 +470,17 @@ const TestStructure: React.FC<WizardStepProps> = ({
 
                   {/* Multiple Sections Option */}
                   <Col md={6}>
-                    <Card 
-                      className={`border-2 h-100 cursor-pointer ${
-                        testData.settings?.useSections === true ? 'border-primary bg-primary bg-opacity-10' : 'border-light'
-                      }`}
+                    <Card
+                      className={`border-2 h-100 cursor-pointer ${testData.settings?.useSections === true ? 'border-primary bg-primary bg-opacity-10' : 'border-light'
+                        }`}
                       onClick={() => handleTestTypeChange(true)}
                       style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
                     >
                       <CardBody className="text-center">
                         <div className="mb-3">
-                          <Layers 
-                            size={48} 
-                            className={testData.settings?.useSections === true ? 'text-primary' : 'text-muted'} 
+                          <Layers
+                            size={48}
+                            className={testData.settings?.useSections === true ? 'text-primary' : 'text-muted'}
                           />
                         </div>
                         <h6 className="mb-2">Sectioned Test</h6>
@@ -524,7 +527,7 @@ const TestStructure: React.FC<WizardStepProps> = ({
                         {testData.settings.useSections ? 'Sectioned Test Selected' : 'Single Test Selected'}
                       </strong>
                       <div className="mt-1 small">
-                        {testData.settings.useSections 
+                        {testData.settings.useSections
                           ? 'You can create multiple sections (e.g., "JavaScript Basics", "React Components") with different time limits for each section. Students will see progress through sections and can\'t go back to previous sections once time expires.'
                           : 'All questions will be in one continuous test with a single timer. Students can navigate freely between questions within the time limit.'
                         }
@@ -582,7 +585,7 @@ const TestStructure: React.FC<WizardStepProps> = ({
                     </InputGroup>
                     <div className="d-flex justify-content-between align-items-center mt-1">
                       <small className="text-muted">
-                        {testData.settings?.useSections 
+                        {testData.settings?.useSections
                           ? 'Default time limit for new sections (can be customized per section)'
                           : 'Total time students have to complete the entire test'
                         }
@@ -663,7 +666,7 @@ const TestStructure: React.FC<WizardStepProps> = ({
                       Shuffle Questions
                     </Label>
                     <div className="text-muted small">
-                      {testData.settings?.useSections 
+                      {testData.settings?.useSections
                         ? 'Randomize question order within each section'
                         : 'Randomize the order of all questions'
                       }
@@ -688,7 +691,7 @@ const TestStructure: React.FC<WizardStepProps> = ({
                     <h6 className="mb-3">Question Distribution Insights</h6>
                   </Col>
                 </Row>
-                
+
                 <Row>
                   <Col md={6}>
                     {questionStats && (
@@ -700,30 +703,30 @@ const TestStructure: React.FC<WizardStepProps> = ({
                             <span className="small">{questionStats.totals.difficultyBreakdown.easy} ({difficultyDistribution.easy}%)</span>
                           </div>
                           <div className="progress mb-2" style={{ height: '8px' }}>
-                            <div 
-                              className="progress-bar bg-success" 
+                            <div
+                              className="progress-bar bg-success"
                               style={{ width: `${difficultyDistribution.easy}%` }}
                             />
                           </div>
-                          
+
                           <div className="d-flex justify-content-between mb-1">
                             <span className="small">Medium Questions</span>
                             <span className="small">{questionStats.totals.difficultyBreakdown.medium} ({difficultyDistribution.medium}%)</span>
                           </div>
                           <div className="progress mb-2" style={{ height: '8px' }}>
-                            <div 
-                              className="progress-bar bg-warning" 
+                            <div
+                              className="progress-bar bg-warning"
                               style={{ width: `${difficultyDistribution.medium}%` }}
                             />
                           </div>
-                          
+
                           <div className="d-flex justify-content-between mb-1">
                             <span className="small">Hard Questions</span>
                             <span className="small">{questionStats.totals.difficultyBreakdown.hard} ({difficultyDistribution.hard}%)</span>
                           </div>
                           <div className="progress" style={{ height: '8px' }}>
-                            <div 
-                              className="progress-bar bg-danger" 
+                            <div
+                              className="progress-bar bg-danger"
                               style={{ width: `${difficultyDistribution.hard}%` }}
                             />
                           </div>
@@ -736,7 +739,7 @@ const TestStructure: React.FC<WizardStepProps> = ({
                       <Info size={16} className="me-2" />
                       <strong>Question Distribution</strong>
                       <div className="mt-1 small">
-                        This shows the actual distribution of questions available in your question bank. 
+                        This shows the actual distribution of questions available in your question bank.
                         Time estimates are based on these real numbers.
                       </div>
                     </Alert>
@@ -764,7 +767,7 @@ const TestStructure: React.FC<WizardStepProps> = ({
                     {testData.testType?.replace('_', ' ').toUpperCase() || 'CUSTOM'}
                   </Badge>
                 </div>
-                
+
                 {testData.settings?.useSections !== undefined ? (
                   <div className="d-flex justify-content-between align-items-center mb-2">
                     <span className="fw-bold">Structure:</span>
@@ -833,7 +836,7 @@ const TestStructure: React.FC<WizardStepProps> = ({
                       )}
                     </div>
                   </div>
-                  
+
                   <div className="d-flex justify-content-between mb-2">
                     <span>Attempts:</span>
                     <Badge color="info">
@@ -907,7 +910,7 @@ const TestStructure: React.FC<WizardStepProps> = ({
                       Template-based recommendations available
                     </Alert>
                   )}
-                  
+
                   {testData.settings?.useSections === true && (
                     <Alert color="info" className="py-2 mb-2">
                       <Layers size={14} className="me-1" />
@@ -949,15 +952,15 @@ const TestStructure: React.FC<WizardStepProps> = ({
               <div className="mb-3">
                 <Label className="fw-bold mb-2">Setup Progress:</Label>
                 <div className="progress mb-2" style={{ height: '8px' }}>
-                  <div 
-                    className="progress-bar bg-primary" 
-                    style={{ 
-                      width: `${testData.settings?.useSections !== undefined ? 50 : 25}%` 
+                  <div
+                    className="progress-bar bg-primary"
+                    style={{
+                      width: `${testData.settings?.useSections !== undefined ? 50 : 25}%`
                     }}
                   ></div>
                 </div>
                 <small className="text-muted">
-                  Structure: {testData.settings?.useSections !== undefined ? '✓' : '○'} | 
+                  Structure: {testData.settings?.useSections !== undefined ? '✓' : '○'} |
                   Settings: {testData.settings?.timeLimit && testData.settings?.attemptsAllowed ? '✓' : '○'}
                 </small>
               </div>
@@ -966,7 +969,7 @@ const TestStructure: React.FC<WizardStepProps> = ({
               <Alert color="light" className="mb-3">
                 <strong>Next Step:</strong>
                 <div className="mt-1 small">
-                  {testData.settings?.useSections 
+                  {testData.settings?.useSections
                     ? 'Configure your test sections with names and individual time limits'
                     : 'Add questions directly to your test'
                   }
@@ -985,10 +988,10 @@ const TestStructure: React.FC<WizardStepProps> = ({
                   <Zap size={14} className="me-1" />
                   Apply Recommended Settings
                 </Button>
-                
+
                 {testData.settings?.useSections !== undefined && (
                   <small className="text-center text-muted">
-                    {testData.settings.useSections 
+                    {testData.settings.useSections
                       ? `Ready for ${Math.ceil((testData.settings?.timeLimit || 45) / 15)} sections`
                       : 'Ready for question assignment'
                     }
@@ -1009,7 +1012,7 @@ const TestStructure: React.FC<WizardStepProps> = ({
               <div>
                 <strong>Configuration Complete!</strong>
                 <div className="small mt-1">
-                  Your test is configured for {testData.settings.useSections ? 'sectioned' : 'single'} delivery 
+                  Your test is configured for {testData.settings.useSections ? 'sectioned' : 'single'} delivery
                   with {testData.settings.timeLimit} minutes and {testData.settings.attemptsAllowed} attempt(s) allowed.
                   {availableQuestions > 0 && (
                     <span className="ms-2">

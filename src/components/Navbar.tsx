@@ -53,32 +53,24 @@ const AppNavbar: React.FC = () => {
   const toggleLoginInputs = () => setShowLoginInputs(!showLoginInputs);
 
   const handleNavClick = (path: string) => {
-    if (path.startsWith('#')) {
-      // Handle hash links for landing page
-      if (currentPath === '/') {
-        const element = document.querySelector(path);
-        element?.scrollIntoView({ behavior: 'smooth' });
-      } else {
-        navigate(`/${path}`);
-      }
-    } else {
-      navigate(path);
-    }
+    navigate(path);
     setIsOpen(false);
     setShowLoginInputs(false);
   };
 
   const handleLogout = async () => {
     await logout();
-    navigate('/');
+    // Let the router handle where to go after logout via route guards
+    setIsOpen(false);
   };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loginData.loginId && loginData.password) {
-      clearError(); // Clear any previous errors
+      clearError();
       await login(loginData.loginId, loginData.password);
-      // Only clear form and close if login was successful
+      // Let the router handle redirect via route guards
+      // Only clear form if login was successful (no error)
       if (!authError) {
         setLoginData({ loginId: '', password: '' });
         setShowLoginInputs(false);
@@ -99,6 +91,24 @@ const AppNavbar: React.FC = () => {
   const hasAdminAccess = user?.role === 'admin' || user?.role === 'instructor';
   const isSuperOrgAdmin = user?.organization?.isSuperOrg && user?.role === 'admin';
 
+  // Show public navigation when not authenticated
+  const showPublicNav = !isAuthenticated;
+
+  // Helper function to get user display name
+  const getUserDisplayName = () => {
+    if (user?.fullName) {
+      return user.fullName;
+    }
+    if (user?.firstName && user?.lastName) {
+      return `${user.firstName} ${user.lastName}`;
+    }
+    return user?.loginId || 'User';
+  };
+
+  const hasUserName = () => {
+    return user?.fullName || (user?.firstName && user?.lastName);
+  };
+
   return (
     <Navbar 
       color="light" 
@@ -118,7 +128,12 @@ const AppNavbar: React.FC = () => {
           className="d-flex align-items-center"
           onClick={(e) => {
             e.preventDefault();
-            navigate('/');
+            // Smart brand click - always go to dashboard (which redirects appropriately)
+            if (isAuthenticated) {
+              navigate('/dashboard');
+            } else {
+              navigate('/');
+            }
           }}
         >
           <div 
@@ -141,43 +156,47 @@ const AppNavbar: React.FC = () => {
         
         <Collapse isOpen={isOpen} navbar>
           <Nav className="me-auto" navbar>
-            {/* Landing Page Links - Only show when on homepage */}
-            {currentPath === '/' && (
+            {/* Public Navigation - Show when NOT authenticated */}
+            {showPublicNav && (
               <>
                 <NavItem>
                   <NavLink 
-                    href="#features"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleNavClick('#features');
-                    }}
+                    onClick={() => handleNavClick('/features')}
+                    active={isActivePath('/features')}
                     style={{ cursor: 'pointer' }}
                   >
+                    <i className="fas fa-cogs me-2"></i>
                     Features
                   </NavLink>
                 </NavItem>
                 <NavItem>
                   <NavLink 
-                    href="#languages"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleNavClick('#languages');
-                    }}
+                    onClick={() => handleNavClick('/languages')}
+                    active={isActivePath('/languages')}
                     style={{ cursor: 'pointer' }}
                   >
+                    <i className="fas fa-code me-2"></i>
                     Languages
                   </NavLink>
                 </NavItem>
                 <NavItem>
                   <NavLink 
-                    href="#analytics"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleNavClick('#analytics');
-                    }}
+                    onClick={() => handleNavClick('/for-organizations')}
+                    active={isActivePath('/for-organizations')}
                     style={{ cursor: 'pointer' }}
                   >
-                    Analytics
+                    <i className="fas fa-building me-2"></i>
+                    Organizations
+                  </NavLink>
+                </NavItem>
+                <NavItem>
+                  <NavLink 
+                    onClick={() => handleNavClick('/for-individuals')}
+                    active={isActivePath('/for-individuals')}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <i className="fas fa-user me-2"></i>
+                    Individuals
                   </NavLink>
                 </NavItem>
               </>
@@ -186,89 +205,77 @@ const AppNavbar: React.FC = () => {
             {/* App Navigation - Show when authenticated */}
             {isAuthenticated && (
               <>
+                {/* Single Dashboard Link - Goes to role-appropriate dashboard */}
                 <NavItem>
                   <NavLink 
                     onClick={() => handleNavClick('/dashboard')}
-                    active={isActivePath('/dashboard')}
+                    active={isActivePath('/dashboard') || isActivePath('/admin') || isActivePath('/student-dashboard')}
                     style={{ cursor: 'pointer' }}
                   >
-                    <i className="fas fa-tachometer-alt me-2"></i>
-                    Dashboard
+                    <i className={`fas ${hasAdminAccess ? 'fa-cogs' : 'fa-tachometer-alt'} me-2`}></i>
+                    {hasAdminAccess ? 'Admin Dashboard' : 'Dashboard'}
+                    {isSuperOrgAdmin && (
+                      <span className="badge bg-primary ms-2" style={{ fontSize: '0.6rem' }}>
+                        SUPER
+                      </span>
+                    )}
                   </NavLink>
                 </NavItem>
                 
-                {/* Admin Navigation */}
+                {/* Admin Management Dropdown - Only show for admins/instructors */}
                 {hasAdminAccess && (
-                  <>
-                    <NavItem>
-                      <NavLink 
-                        onClick={() => handleNavClick('/admin')}
-                        active={isActivePath('/admin')}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        <i className="fas fa-cogs me-2"></i>
-                        Admin
-                        {isSuperOrgAdmin && (
-                          <span className="badge bg-primary ms-2" style={{ fontSize: '0.6rem' }}>
-                            SUPER
-                          </span>
-                        )}
-                      </NavLink>
-                    </NavItem>
-                    
-                    <UncontrolledDropdown nav inNavbar>
-                      <DropdownToggle nav caret>
-                        <i className="fas fa-tools me-2"></i>
-                        Manage
-                      </DropdownToggle>
-                      <DropdownMenu>
-                        <DropdownItem onClick={() => handleNavClick('/admin/users')}>
-                          <i className="fas fa-users me-2"></i>
-                          Users
-                        </DropdownItem>
-                        <DropdownItem onClick={() => handleNavClick('/admin/question-bank')}>
-                          <i className="fas fa-question-circle me-2"></i>
-                          Questions
-                        </DropdownItem>
-                        <DropdownItem onClick={() => handleNavClick('/admin/tests')}>
-                          <i className="fas fa-clipboard-list me-2"></i>
-                          Tests
-                        </DropdownItem>
-                        <DropdownItem onClick={() => handleNavClick('/admin/test-sessions')}>
-                          <i className="fas fa-desktop me-2"></i>
-                          Test Sessions
-                        </DropdownItem>
-                        <DropdownItem divider />
-                        <DropdownItem onClick={() => handleNavClick('/admin/analytics')}>
-                          <i className="fas fa-chart-bar me-2"></i>
-                          Analytics
-                        </DropdownItem>
-                        
-                        {/* Super Admin Only Items */}
-                        {isSuperOrgAdmin && (
-                          <>
-                            <DropdownItem divider />
-                            <DropdownItem header className="text-primary">
-                              <i className="fas fa-crown me-2"></i>
-                              Super Admin
-                            </DropdownItem>
-                            <DropdownItem onClick={() => handleNavClick('/admin/organizations')}>
-                              <i className="fas fa-building me-2"></i>
-                              Organizations
-                            </DropdownItem>
-                            <DropdownItem onClick={() => handleNavClick('/admin/global-content')}>
-                              <i className="fas fa-globe me-2"></i>
-                              Global Content
-                            </DropdownItem>
-                            <DropdownItem onClick={() => handleNavClick('/admin/system-health')}>
-                              <i className="fas fa-heartbeat me-2"></i>
-                              System Health
-                            </DropdownItem>
-                          </>
-                        )}
-                      </DropdownMenu>
-                    </UncontrolledDropdown>
-                  </>
+                  <UncontrolledDropdown nav inNavbar>
+                    <DropdownToggle nav caret>
+                      <i className="fas fa-tools me-2"></i>
+                      Manage
+                    </DropdownToggle>
+                    <DropdownMenu>
+                      <DropdownItem onClick={() => handleNavClick('/admin/users')}>
+                        <i className="fas fa-users me-2"></i>
+                        Users
+                      </DropdownItem>
+                      <DropdownItem onClick={() => handleNavClick('/admin/question-bank')}>
+                        <i className="fas fa-question-circle me-2"></i>
+                        Questions
+                      </DropdownItem>
+                      <DropdownItem onClick={() => handleNavClick('/admin/tests')}>
+                        <i className="fas fa-clipboard-list me-2"></i>
+                        Tests
+                      </DropdownItem>
+                      <DropdownItem onClick={() => handleNavClick('/admin/test-sessions')}>
+                        <i className="fas fa-desktop me-2"></i>
+                        Test Sessions
+                      </DropdownItem>
+                      <DropdownItem divider />
+                      <DropdownItem onClick={() => handleNavClick('/admin/analytics')}>
+                        <i className="fas fa-chart-bar me-2"></i>
+                        Analytics
+                      </DropdownItem>
+                      
+                      {/* Super Admin Only Items */}
+                      {isSuperOrgAdmin && (
+                        <>
+                          <DropdownItem divider />
+                          <DropdownItem header className="text-primary">
+                            <i className="fas fa-crown me-2"></i>
+                            Super Admin
+                          </DropdownItem>
+                          <DropdownItem onClick={() => handleNavClick('/admin/organizations')}>
+                            <i className="fas fa-building me-2"></i>
+                            Organizations
+                          </DropdownItem>
+                          <DropdownItem onClick={() => handleNavClick('/admin/global-content')}>
+                            <i className="fas fa-globe me-2"></i>
+                            Global Content
+                          </DropdownItem>
+                          <DropdownItem onClick={() => handleNavClick('/admin/system-health')}>
+                            <i className="fas fa-heartbeat me-2"></i>
+                            System Health
+                          </DropdownItem>
+                        </>
+                      )}
+                    </DropdownMenu>
+                  </UncontrolledDropdown>
                 )}
                 
                 {/* Student Navigation */}
@@ -296,6 +303,37 @@ const AppNavbar: React.FC = () => {
                     </NavItem>
                   </>
                 )}
+
+                {/* Platform Info Dropdown for authenticated users */}
+                <UncontrolledDropdown nav inNavbar>
+                  <DropdownToggle nav caret className="text-muted">
+                    <i className="fas fa-info-circle me-2"></i>
+                    Platform
+                  </DropdownToggle>
+                  <DropdownMenu>
+                    <DropdownItem onClick={() => handleNavClick('/features')}>
+                      <i className="fas fa-cogs me-2"></i>
+                      Features
+                    </DropdownItem>
+                    <DropdownItem onClick={() => handleNavClick('/languages')}>
+                      <i className="fas fa-code me-2"></i>
+                      Languages
+                    </DropdownItem>
+                    <DropdownItem onClick={() => handleNavClick('/for-organizations')}>
+                      <i className="fas fa-building me-2"></i>
+                      Organizations
+                    </DropdownItem>
+                    <DropdownItem onClick={() => handleNavClick('/for-individuals')}>
+                      <i className="fas fa-user me-2"></i>
+                      Individuals
+                    </DropdownItem>
+                    <DropdownItem divider />
+                    <DropdownItem onClick={() => handleNavClick('/')}>
+                      <i className="fas fa-home me-2"></i>
+                      Landing Page
+                    </DropdownItem>
+                  </DropdownMenu>
+                </UncontrolledDropdown>
               </>
             )}
           </Nav>
@@ -334,35 +372,48 @@ const AppNavbar: React.FC = () => {
               /* User Menu Dropdown */
               <UncontrolledDropdown nav inNavbar>
                 <DropdownToggle nav caret className="d-flex align-items-center">
-                  <span className="me-2">
-                    {user?.loginId}
-                  </span>
-                  <span 
-                    className="badge text-uppercase" 
-                    style={{ 
-                      fontSize: '0.7rem',
-                      backgroundColor: user?.role === 'admin' ? '#dc3545' : 
-                                      user?.role === 'instructor' ? '#fd7e14' : '#28a745',
-                      color: 'white'
-                    }}
-                  >
-                    {user?.role}
-                  </span>
-                  {user?.organization?.isSuperOrg && (
-                    <span className="badge bg-primary ms-1" style={{ fontSize: '0.6rem' }}>
-                      SUPER
+                  <div className="me-2 text-end">
+                    <div className="fw-medium" style={{ lineHeight: '1.1' }}>
+                      {getUserDisplayName()}
+                    </div>
+                    {hasUserName() && (
+                      <small className="text-muted" style={{ fontSize: '0.75rem' }}>
+                        @{user?.loginId}
+                      </small>
+                    )}
+                  </div>
+                  <div className="d-flex align-items-center">
+                    <span 
+                      className="badge text-uppercase me-1" 
+                      style={{ 
+                        fontSize: '0.7rem',
+                        backgroundColor: user?.role === 'admin' ? '#dc3545' : 
+                                        user?.role === 'instructor' ? '#fd7e14' : '#28a745',
+                        color: 'white'
+                      }}
+                    >
+                      {user?.role}
                     </span>
-                  )}
+                    {user?.organization?.isSuperOrg && (
+                      <span className="badge bg-primary" style={{ fontSize: '0.6rem' }}>
+                        SUPER
+                      </span>
+                    )}
+                  </div>
                 </DropdownToggle>
                 <DropdownMenu end>
                   <div className="dropdown-header">
-                    <small className="text-muted">
-                      ID: {user?.id?.slice(0, 8)}...
-                    </small>
-                    <br />
-                    <small className="text-muted">
-                      Org: {user?.organization?.name}
-                    </small>
+                    <div className="fw-medium">{getUserDisplayName()}</div>
+                    <small className="text-muted">@{user?.loginId}</small>
+                    <div className="mt-1">
+                      <small className="text-muted">
+                        ID: {user?._id?.slice(0, 8)}...
+                      </small>
+                      <br />
+                      <small className="text-muted">
+                        Org: {user?.organization?.name}
+                      </small>
+                    </div>
                   </div>
                   <DropdownItem divider />
                   <DropdownItem onClick={() => handleNavClick('/profile')}>
@@ -373,17 +424,6 @@ const AppNavbar: React.FC = () => {
                     <i className="fas fa-cog me-2"></i>
                     Settings
                   </DropdownItem>
-                  
-                  {/* Quick Admin Access */}
-                  {hasAdminAccess && (
-                    <>
-                      <DropdownItem divider />
-                      <DropdownItem onClick={() => handleNavClick('/admin')}>
-                        <i className="fas fa-cogs me-2"></i>
-                        Admin Dashboard
-                      </DropdownItem>
-                    </>
-                  )}
                   
                   <DropdownItem divider />
                   <DropdownItem onClick={handleLogout}>
@@ -396,7 +436,7 @@ const AppNavbar: React.FC = () => {
           </Nav>
         </Collapse>
 
-        {/* Inline Login Form - Appears directly in navbar */}
+        {/* Inline Login Form - Only show when NOT authenticated */}
         {!isAuthenticated && showLoginInputs && (
           <div 
             className="w-100 mt-3"
@@ -430,7 +470,7 @@ const AppNavbar: React.FC = () => {
             <Row className="align-items-end">
               <Col md={3}>
                 <FormGroup className="mb-2">
-                  <Label for="inline-login-id" size="sm" className="text-muted">
+                  <Label htmlFor="inline-login-id" size="sm" className="text-muted">
                     Email or Username
                   </Label>
                   <Input
@@ -448,7 +488,7 @@ const AppNavbar: React.FC = () => {
               </Col>
               <Col md={3}>
                 <FormGroup className="mb-2">
-                  <Label for="inline-password" size="sm" className="text-muted">
+                  <Label htmlFor="inline-password" size="sm" className="text-muted">
                     Password
                   </Label>
                   <Input
@@ -461,6 +501,11 @@ const AppNavbar: React.FC = () => {
                     disabled={authLoading}
                     bsSize="sm"
                     style={{ fontSize: '0.875rem' }}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        handleLogin(e as any);
+                      }
+                    }}
                   />
                 </FormGroup>
               </Col>
@@ -534,6 +579,10 @@ const AppNavbar: React.FC = () => {
           .navbar .row .col-md-4 {
             width: 100%;
             margin-bottom: 0.5rem;
+          }
+          
+          .dropdown-toggle .text-end {
+            text-align: left !important;
           }
         }
       `}</style>

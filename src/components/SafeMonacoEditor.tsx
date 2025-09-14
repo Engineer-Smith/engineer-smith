@@ -30,7 +30,48 @@ const SafeMonacoEditor: React.FC<SafeMonacoEditorProps> = ({
   const [useTextarea, setUseTextarea] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [editorHeight, setEditorHeight] = useState(height);
   const timeoutRef = useRef<number | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Calculate actual height when using percentage
+  useEffect(() => {
+    if (height === '100%' && containerRef.current) {
+      const updateHeight = () => {
+        const container = containerRef.current;
+        if (container) {
+          const parentHeight = container.offsetParent?.clientHeight || container.parentElement?.clientHeight;
+          if (parentHeight && parentHeight > 0) {
+            // Subtract some padding/border space
+            const calculatedHeight = Math.max(300, parentHeight - 10);
+            setEditorHeight(`${calculatedHeight}px`);
+          } else {
+            // Fallback to a reasonable minimum
+            setEditorHeight('400px');
+          }
+        }
+      };
+
+      // Initial calculation
+      updateHeight();
+
+      // Set up resize observer
+      const resizeObserver = new ResizeObserver(updateHeight);
+      if (containerRef.current?.parentElement) {
+        resizeObserver.observe(containerRef.current.parentElement);
+      }
+
+      // Fallback with timeout
+      const timeoutId = setTimeout(updateHeight, 100);
+
+      return () => {
+        resizeObserver.disconnect();
+        clearTimeout(timeoutId);
+      };
+    } else {
+      setEditorHeight(height);
+    }
+  }, [height]);
 
   useEffect(() => {
     // Set a timeout to fallback to textarea if Monaco takes too long
@@ -55,6 +96,11 @@ const SafeMonacoEditor: React.FC<SafeMonacoEditorProps> = ({
     setLoadError(null);
     
     try {
+      // Force layout after mount
+      setTimeout(() => {
+        editor.layout();
+      }, 100);
+      
       onMount?.(editor, monaco);
     } catch (error) {
       console.warn('Monaco onMount error:', error);
@@ -83,7 +129,7 @@ const SafeMonacoEditor: React.FC<SafeMonacoEditorProps> = ({
   // Fallback to textarea
   if (useTextarea || loadError) {
     return (
-      <div>
+      <div ref={containerRef}>
         {loadError && (
           <Alert color="warning" className="mb-2">
             <AlertTriangle size={16} className="me-2" />
@@ -97,7 +143,7 @@ const SafeMonacoEditor: React.FC<SafeMonacoEditorProps> = ({
           disabled={readOnly}
           placeholder={placeholder}
           style={{ 
-            height, 
+            height: editorHeight, 
             fontFamily: 'monospace',
             fontSize: '14px',
             lineHeight: '1.4'
@@ -144,7 +190,7 @@ const SafeMonacoEditor: React.FC<SafeMonacoEditorProps> = ({
             disabled={readOnly}
             placeholder={placeholder}
             style={{ 
-              height, 
+              height: editorHeight, 
               fontFamily: 'monospace',
               fontSize: '14px',
               lineHeight: '1.4'
@@ -154,11 +200,11 @@ const SafeMonacoEditor: React.FC<SafeMonacoEditorProps> = ({
         </div>
       }
     >
-      <div className="position-relative">
+      <div className="position-relative" ref={containerRef} style={{ height: height }}>
         {isLoading && (
           <div 
             className="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-light border rounded"
-            style={{ zIndex: 10 }}
+            style={{ zIndex: 10, height: editorHeight }}
           >
             <div className="text-center">
               <Spinner color="primary" className="mb-2" />
@@ -167,9 +213,9 @@ const SafeMonacoEditor: React.FC<SafeMonacoEditorProps> = ({
           </div>
         )}
         
-        <div className="border rounded" style={{ height }}>
+        <div className="border rounded" style={{ height: editorHeight, width: '100%' }}>
           <Editor
-            height={height}
+            height={editorHeight}
             language={language}
             value={value}
             onChange={handleEditorChange}

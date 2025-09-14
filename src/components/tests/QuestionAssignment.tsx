@@ -1,3 +1,5 @@
+// src/components/tests/QuestionAssignment.tsx - Updated to use QuestionBrowser
+
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     Row,
@@ -5,21 +7,28 @@ import {
     Button,
     Card,
     CardBody,
-    Nav,
-    NavItem,
-    NavLink,
-    TabContent,
-    TabPane,
-    Alert,
     Progress,
     Badge
 } from 'reactstrap';
-import { ArrowLeft, ArrowRight, Target, AlertCircle } from 'lucide-react';
+import {
+    ArrowLeft,
+    ArrowRight,
+    Target,
+    RefreshCw,
+    Plus,
+    ExternalLink
+} from 'lucide-react';
 import apiService from '../../services/ApiService';
-import type { WizardStepProps, CreateTestData, TestQuestion } from '../../types/createTest';
-import type { Question, QuestionType, Difficulty, Language, Tags } from '../../types';
 import QuestionBrowser from './QuestionBrowser';
-import QuestionCreator from './QuestionCreator';
+import type { WizardStepProps, CreateTestData, TestQuestionReference } from '../../types';
+import type {
+    Question,
+    QuestionType,
+    Difficulty,
+    Language,
+    Tags,
+    QuestionCategory
+} from '../../types';
 
 const QuestionAssignment: React.FC<WizardStepProps> = ({
     testData,
@@ -28,27 +37,22 @@ const QuestionAssignment: React.FC<WizardStepProps> = ({
     onPrevious,
     setError
 }) => {
-    const [activeTab, setActiveTab] = useState<'browse' | 'create'>('browse');
     const [questions, setQuestions] = useState<Question[]>([]);
     const [loading, setLoading] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
 
     // Question filtering states
     const [searchTerm, setSearchTerm] = useState('');
     const [filterType, setFilterType] = useState<QuestionType | ''>('');
     const [filterDifficulty, setFilterDifficulty] = useState<Difficulty | ''>('');
     const [filterLanguage, setFilterLanguage] = useState<Language | ''>('');
+    const [filterCategory, setFilterCategory] = useState<QuestionCategory | ''>('');
     const [filterTag, setFilterTag] = useState<Tags | ''>('');
     const [selectedSectionIndex, setSelectedSectionIndex] = useState<number>(0);
 
-    // New questions created in this session
-    const [newQuestions, setNewQuestions] = useState<Question[]>([]);
-
-    // Load questions when languages/tags/filters change
+    // Load questions when filters change
     useEffect(() => {
-        if (testData.languages.length > 0 || testData.tags.length > 0) {
-            fetchQuestions();
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        fetchQuestions();
     }, [
         testData.languages,
         testData.tags,
@@ -56,75 +60,78 @@ const QuestionAssignment: React.FC<WizardStepProps> = ({
         filterType,
         filterDifficulty,
         filterLanguage,
+        filterCategory,
         filterTag
     ]);
 
-    const fetchQuestions = async () => {
+    const fetchQuestions = async (isRefresh = false) => {
         try {
-            setLoading(true);
+            if (isRefresh) {
+                setRefreshing(true);
+            } else {
+                setLoading(true);
+            }
+
             const params: Record<string, string | number | boolean> = {
                 status: 'active',
                 limit: 200
             };
 
-            if (testData.languages.length > 0) {
-                params.language = testData.languages.join(',');
-            }
-            if (testData.tags.length > 0) {
-                params.tag = testData.tags.join(',');
-            }
-            if (searchTerm) {
-                params.search = searchTerm;
-            }
-            if (filterType) {
-                params.type = filterType;
-            }
-            if (filterDifficulty) {
-                params.difficulty = filterDifficulty;
-            }
+            // Build query parameters
             if (filterLanguage) {
                 params.language = filterLanguage;
+            } else if (testData.languages.length > 0) {
+                params.language = testData.languages[0];
             }
+
             if (filterTag) {
                 params.tag = filterTag;
+            } else if (testData.tags.length > 0) {
+                params.tag = testData.tags[0];
             }
 
-            const response = await apiService.getAllQuestions(params, false);
-            if (response.error) {
-                throw new Error(response.message || 'Failed to fetch questions');
+            if (searchTerm) params.search = searchTerm;
+            if (filterType) params.type = filterType;
+            if (filterDifficulty) params.difficulty = filterDifficulty;
+            if (filterCategory) params.category = filterCategory;
+
+            console.log('QuestionAssignment: Fetching questions with params:', params);
+
+            // FIXED: getAllQuestions returns Question[] directly, no wrapper
+            const questions = await apiService.getAllQuestions(params, false);
+
+            if (!Array.isArray(questions)) {
+                throw new Error('Failed to fetch questions - invalid response format');
             }
 
-            const data: Question[] = Array.isArray(response.data)
-                ? response.data
-                : response.data?.questions || [];
-
-            // Merge with locally created questions so they remain visible in the list
-            setQuestions([...data, ...newQuestions]);
+            setQuestions(questions);
         } catch (error) {
             console.error('Failed to fetch questions:', error);
-            setError(error instanceof Error ? error.message : 'Failed to load questions');
+            setError?.(error instanceof Error ? error.message : 'Failed to load questions');
         } finally {
             setLoading(false);
+            setRefreshing(false);
         }
     };
 
-    const setTestDataCompat: React.Dispatch<React.SetStateAction<CreateTestData>> = (next) => {
-        if (typeof next === 'function') {
-            const compute = next as (prev: CreateTestData) => CreateTestData;
-            setTestData(compute(testData)); // your current (data) => void
-        } else {
-            setTestData(next);
-        }
+    const handleRefresh = () => {
+        fetchQuestions(true);
     };
 
-    // Compute filtered list the browser expects
+    const handleCreateQuestion = () => {
+        // Open question creation in new tab
+        const url = 'http://localhost:5173/admin/question-bank/add';
+        window.open(url, '_blank');
+    };
+
+    // Compute filtered list
     const filteredQuestions = useMemo(() => {
         const term = searchTerm.trim().toLowerCase();
-
         return questions.filter((q) => {
             if (filterType && q.type !== filterType) return false;
             if (filterDifficulty && q.difficulty !== filterDifficulty) return false;
             if (filterLanguage && q.language !== filterLanguage) return false;
+            if (filterCategory && q.category !== filterCategory) return false;
             if (filterTag && !(q.tags || []).includes(filterTag)) return false;
 
             if (!term) return true;
@@ -134,29 +141,24 @@ const QuestionAssignment: React.FC<WizardStepProps> = ({
             const inTags = (q.tags || []).some((t) => t.toLowerCase().includes(term));
             return inTitle || inDesc || inTags;
         });
-    }, [questions, searchTerm, filterType, filterDifficulty, filterLanguage, filterTag]);
+    }, [questions, searchTerm, filterType, filterDifficulty, filterLanguage, filterCategory, filterTag]);
 
     // Question selection handlers
     const handleToggleQuestion = (questionId: string) => {
-        const question = questions.find(q => q.id === questionId);
-        if (!question) return;
-
-        if (testData.settings.useSections) {
+        if (testData.settings.useSections && testData.sections) {
             const updatedSections = [...testData.sections];
             const section = updatedSections[selectedSectionIndex];
-            
+
             if (!section) return;
 
             const isSelected = section.questions.some(q => q.questionId === questionId);
-            
+
             if (isSelected) {
-                // Remove question
                 section.questions = section.questions.filter(q => q.questionId !== questionId);
             } else {
-                // Add question with default points
                 section.questions.push({
                     questionId: questionId,
-                    points: 10 // Default points
+                    points: 10
                 });
             }
 
@@ -165,21 +167,19 @@ const QuestionAssignment: React.FC<WizardStepProps> = ({
                 sections: updatedSections
             });
         } else {
-            const isSelected = testData.questions.some(q => q.questionId === questionId);
-            
+            const isSelected = testData.questions?.some(q => q.questionId === questionId) || false;
+
             if (isSelected) {
-                // Remove question
                 setTestData({
                     ...testData,
-                    questions: testData.questions.filter(q => q.questionId !== questionId)
+                    questions: testData.questions?.filter(q => q.questionId !== questionId) || []
                 });
             } else {
-                // Add question with default points
                 setTestData({
                     ...testData,
-                    questions: [...testData.questions, {
+                    questions: [...(testData.questions || []), {
                         questionId: questionId,
-                        points: 10 // Default points
+                        points: 10
                     }]
                 });
             }
@@ -187,19 +187,18 @@ const QuestionAssignment: React.FC<WizardStepProps> = ({
     };
 
     const handleSelectAllVisible = () => {
-        if (testData.settings.useSections) {
+        if (testData.settings.useSections && testData.sections) {
             const updatedSections = [...testData.sections];
             const section = updatedSections[selectedSectionIndex];
-            
+
             if (!section) return;
 
-            // Add all visible questions that aren't already selected
             filteredQuestions.forEach(question => {
-                const isAlreadySelected = section.questions.some(q => q.questionId === question.id);
+                const isAlreadySelected = section.questions.some(q => q.questionId === question._id);
                 if (!isAlreadySelected) {
                     section.questions.push({
-                        questionId: question.id,
-                        points: 10 // Default points
+                        questionId: question._id,
+                        points: 10
                     });
                 }
             });
@@ -209,29 +208,29 @@ const QuestionAssignment: React.FC<WizardStepProps> = ({
                 sections: updatedSections
             });
         } else {
-            const newQuestions: TestQuestion[] = [];
-            
+            const newQuestionRefs: TestQuestionReference[] = [];
+
             filteredQuestions.forEach(question => {
-                const isAlreadySelected = testData.questions.some(q => q.questionId === question.id);
+                const isAlreadySelected = testData.questions?.some(q => q.questionId === question._id) || false;
                 if (!isAlreadySelected) {
-                    newQuestions.push({
-                        questionId: question.id,
-                        points: 10 // Default points
+                    newQuestionRefs.push({
+                        questionId: question._id,
+                        points: 10
                     });
                 }
             });
 
-            if (newQuestions.length > 0) {
+            if (newQuestionRefs.length > 0) {
                 setTestData({
                     ...testData,
-                    questions: [...testData.questions, ...newQuestions]
+                    questions: [...(testData.questions || []), ...newQuestionRefs]
                 });
             }
         }
     };
 
     const handleClearSelection = () => {
-        if (testData.settings.useSections) {
+        if (testData.settings.useSections && testData.sections) {
             const updatedSections = [...testData.sections];
             if (updatedSections[selectedSectionIndex]) {
                 updatedSections[selectedSectionIndex].questions = [];
@@ -249,51 +248,39 @@ const QuestionAssignment: React.FC<WizardStepProps> = ({
         }
     };
 
+    // Helper functions for display
     const getTotalQuestions = () => {
-        if (testData.settings.useSections) {
+        if (testData.settings.useSections && testData.sections) {
             return testData.sections.reduce((total, section) => total + section.questions.length, 0);
         }
-        // Note: this includes newQuestions count as in your original logic.
-        return testData.questions.length + newQuestions.length;
+        return testData.questions?.length || 0;
     };
 
     const getTotalPoints = () => {
-        if (testData.settings.useSections) {
+        if (testData.settings.useSections && testData.sections) {
             return testData.sections.reduce(
                 (total, section) =>
                     total + section.questions.reduce((sectionTotal, q) => sectionTotal + q.points, 0),
                 0
             );
         }
-        const existingPoints = testData.questions.reduce((total, q) => total + q.points, 0);
-        const newPoints = newQuestions.reduce((total) => total + 10, 0); // Assume 10 points default
-        return existingPoints + newPoints;
-    };
-
-    const getSelectedQuestionCount = () => {
-        if (testData.settings.useSections) {
-            if (!testData.sections[selectedSectionIndex]) {
-                return 0;
-            }
-            return testData.sections[selectedSectionIndex].questions.length;
-        }
-        return testData.questions.length;
+        return testData.questions?.reduce((total, q) => total + q.points, 0) || 0;
     };
 
     const handleNext = () => {
-        setError(null);
+        setError?.(null);
 
         const totalQuestions = getTotalQuestions();
 
         if (totalQuestions === 0) {
-            setError('Please add at least one question to the test');
+            setError?.('Please add at least one question to the test');
             return;
         }
 
-        if (testData.settings.useSections) {
+        if (testData.settings.useSections && testData.sections) {
             const emptySections = testData.sections.filter((section) => section.questions.length === 0);
             if (emptySections.length > 0) {
-                setError(`Please add questions to all sections. ${emptySections.length} section(s) are empty.`);
+                setError?.(`Please add questions to all sections. ${emptySections.length} section(s) are empty.`);
                 return;
             }
         }
@@ -304,50 +291,48 @@ const QuestionAssignment: React.FC<WizardStepProps> = ({
     return (
         <div>
             {/* Progress Summary */}
-            <div className="mb-4">
-                <Card className="bg-light border-0">
-                    <CardBody>
-                        <Row>
-                            <Col md="3">
-                                <div className="text-center">
-                                    <h4 className="mb-1 text-primary">{getTotalQuestions()}</h4>
-                                    <small className="text-muted">Total Questions</small>
-                                </div>
-                            </Col>
-                            <Col md="3">
-                                <div className="text-center">
-                                    <h4 className="mb-1 text-success">{getTotalPoints()}</h4>
-                                    <small className="text-muted">Total Points</small>
-                                </div>
-                            </Col>
-                            <Col md="3">
-                                <div className="text-center">
-                                    <h4 className="mb-1 text-info">
-                                        {testData.settings.useSections ? testData.sections.length : 0}
-                                    </h4>
-                                    <small className="text-muted">Sections</small>
-                                </div>
-                            </Col>
-                            <Col md="3">
-                                <div className="text-center">
-                                    <h4 className="mb-1 text-warning">{newQuestions.length}</h4>
-                                    <small className="text-muted">New Questions</small>
-                                </div>
-                            </Col>
-                        </Row>
-                    </CardBody>
-                </Card>
-            </div>
+            <Card className="bg-light border-0 mb-4">
+                <CardBody>
+                    <Row>
+                        <Col md="3">
+                            <div className="text-center">
+                                <h4 className="mb-1 text-primary">{getTotalQuestions()}</h4>
+                                <small className="text-muted">Total Questions</small>
+                            </div>
+                        </Col>
+                        <Col md="3">
+                            <div className="text-center">
+                                <h4 className="mb-1 text-success">{getTotalPoints()}</h4>
+                                <small className="text-muted">Total Points</small>
+                            </div>
+                        </Col>
+                        <Col md="3">
+                            <div className="text-center">
+                                <h4 className="mb-1 text-info">
+                                    {testData.settings.useSections ? testData.sections?.length || 0 : 0}
+                                </h4>
+                                <small className="text-muted">Sections</small>
+                            </div>
+                        </Col>
+                        <Col md="3">
+                            <div className="text-center">
+                                <h4 className="mb-1 text-secondary">{questions.length}</h4>
+                                <small className="text-muted">Available</small>
+                            </div>
+                        </Col>
+                    </Row>
+                </CardBody>
+            </Card>
 
             {/* Section Progress (for section-based tests) */}
-            {testData.settings.useSections && (
-                <div className="mb-4">
-                    <h6 className="d-flex align-items-center mb-3">
-                        <Target size={16} className="me-2" />
-                        Section Progress
-                    </h6>
-                    {testData.sections.length > 0 ? (
-                        testData.sections.map((section, index) => (
+            {testData.settings.useSections && testData.sections && (
+                <Card className="mb-4">
+                    <CardBody>
+                        <h6 className="d-flex align-items-center mb-3">
+                            <Target size={16} className="me-2" />
+                            Section Progress
+                        </h6>
+                        {testData.sections.map((section, index) => (
                             <div key={index} className="mb-2">
                                 <div className="d-flex justify-content-between align-items-center mb-1">
                                     <span className="small fw-medium">{section.name}</span>
@@ -359,84 +344,74 @@ const QuestionAssignment: React.FC<WizardStepProps> = ({
                                     style={{ height: '4px' }}
                                 />
                             </div>
-                        ))
-                    ) : (
-                        <Alert color="warning">
-                            <AlertCircle size={16} className="me-2" />
-                            No sections defined. Add sections in the previous step.
-                        </Alert>
-                    )}
-                </div>
+                        ))}
+                    </CardBody>
+                </Card>
             )}
 
-            {/* Tab Navigation */}
-            <Nav tabs className="mb-3">
-                <NavItem>
-                    <NavLink
-                        className={activeTab === 'browse' ? 'active' : ''}
-                        onClick={() => setActiveTab('browse')}
-                        style={{ cursor: 'pointer' }}
-                    >
-                        Browse Questions
-                        <Badge color="secondary" className="ms-2">
-                            {questions.length}
-                        </Badge>
-                    </NavLink>
-                </NavItem>
-                <NavItem>
-                    <NavLink
-                        className={activeTab === 'create' ? 'active' : ''}
-                        onClick={() => setActiveTab('create')}
-                        style={{ cursor: 'pointer' }}
-                    >
-                        Create New
-                        <Badge color="success" className="ms-2">
-                            {newQuestions.length}
-                        </Badge>
-                    </NavLink>
-                </NavItem>
-            </Nav>
+            {/* Header Actions */}
+            <Card className="mb-4">
+                <CardBody>
+                    <Row className="align-items-center">
+                        <Col>
+                            <h6 className="mb-0">Question Library</h6>
+                            <small className="text-muted">
+                                Browse and select questions for your test
+                            </small>
+                        </Col>
+                        <Col xs="auto">
+                            <div className="d-flex gap-2">
+                                <Button
+                                    color="outline-primary"
+                                    size="sm"
+                                    onClick={handleRefresh}
+                                    disabled={refreshing}
+                                >
+                                    <RefreshCw size={14} className={`me-1 ${refreshing ? 'rotating' : ''}`} />
+                                    {refreshing ? 'Refreshing...' : 'Refresh'}
+                                </Button>
+                                <Button
+                                    color="success"
+                                    size="sm"
+                                    onClick={handleCreateQuestion}
+                                >
+                                    <Plus size={14} className="me-1" />
+                                    Create Question
+                                    <ExternalLink size={12} className="ms-1" />
+                                </Button>
+                            </div>
+                        </Col>
+                    </Row>
+                </CardBody>
+            </Card>
 
-            {/* Tab Content */}
-            <TabContent activeTab={activeTab}>
-                <TabPane tabId="browse">
-                    <QuestionBrowser
-                        loading={loading}
-                        questions={questions}
-                        filteredQuestions={filteredQuestions}
-                        testData={testData}
-                        selectedSectionIndex={selectedSectionIndex}
-                        searchTerm={searchTerm}
-                        setSearchTerm={setSearchTerm}
-                        filterType={filterType}
-                        setFilterType={setFilterType}
-                        filterDifficulty={filterDifficulty}
-                        setFilterDifficulty={setFilterDifficulty}
-                        filterLanguage={filterLanguage}
-                        setFilterLanguage={setFilterLanguage}
-                        filterTag={filterTag}
-                        setFilterTag={setFilterTag}
-                        setSelectedSectionIndex={setSelectedSectionIndex}
-                        onToggleQuestion={handleToggleQuestion}
-                        onAssignAll={handleSelectAllVisible}
-                        onClear={handleClearSelection}
-                    />
-                </TabPane>
-
-                <TabPane tabId="create">
-                    <QuestionCreator
-                        newQuestions={newQuestions}
-                        setNewQuestions={setNewQuestions}
-                        selectedSectionIndex={selectedSectionIndex}
-                        setSelectedSectionIndex={setSelectedSectionIndex}
-                        testData={testData}
-                        setTestData={setTestDataCompat}
-                    />
-                </TabPane>
-            </TabContent>
+            {/* Question Browser Component */}
+            <QuestionBrowser
+                loading={loading}
+                questions={questions}
+                filteredQuestions={filteredQuestions}
+                testData={testData}
+                selectedSectionIndex={selectedSectionIndex}
+                searchTerm={searchTerm}
+                setSearchTerm={setSearchTerm}
+                filterType={filterType}
+                setFilterType={setFilterType}
+                filterDifficulty={filterDifficulty}
+                setFilterDifficulty={setFilterDifficulty}
+                filterLanguage={filterLanguage}
+                setFilterLanguage={setFilterLanguage}
+                filterCategory={filterCategory}
+                setFilterCategory={setFilterCategory}
+                filterTag={filterTag}
+                setFilterTag={setFilterTag}
+                setSelectedSectionIndex={setSelectedSectionIndex}
+                onToggleQuestion={handleToggleQuestion}
+                onAssignAll={handleSelectAllVisible}
+                onClear={handleClearSelection}
+            />
 
             {/* Navigation */}
-            <div className="d-flex justify-content-between pt-3 border-top mt-4">
+            <div className="d-flex justify-content-between pt-3 border-top">
                 <Button color="secondary" onClick={onPrevious} className="d-flex align-items-center">
                     <ArrowLeft size={16} className="me-1" />
                     {testData.settings.useSections ? 'Previous: Configure Sections' : 'Previous: Test Structure'}

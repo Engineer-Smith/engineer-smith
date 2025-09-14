@@ -1,4 +1,4 @@
-// hooks/useQuestionStats.ts
+// hooks/useQuestionStats.ts - FIXED: Explicit parameter types
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import apiService from '../services/ApiService';
@@ -29,6 +29,9 @@ interface QuestionStatsData {
     };
   };
 }
+
+// Type for individual language stat to make callbacks type-safe
+type LanguageStat = QuestionStatsData['byLanguage'][0];
 
 interface UseQuestionStatsReturn {
   stats: { [key: string]: number };
@@ -95,7 +98,8 @@ export const useQuestionStats = (): UseQuestionStatsReturn => {
         if (skill.subCategories) {
           subBreakdowns[skill.skill] = {};
           skill.subCategories.forEach(subCat => {
-            const subStat = byLanguage.find(s => s.language === subCat);
+            // FIXED: Explicitly type the callback parameter
+            const subStat = byLanguage.find((s: LanguageStat) => s.language === subCat);
             subBreakdowns[skill.skill][subCat] = subStat?.count || 0;
           });
         }
