@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import AppNavbar from "./components/Navbar";
+import AppNavbar from "./components/navbar/Navbar";
 import LandingPage from "./pages/LandingPage";
 import AuthPage from "./pages/AuthPage";
 import Dashboard from "./pages/Dashboard";
@@ -32,6 +32,13 @@ import { TestSessionProvider } from './context/TestSessionContext';
 import TestResultsPage from './pages/TestResultsPage';
 import ResultDetailsPage from './pages/ResultDetailsPage';
 import { SocketProvider } from './context/SocketContext';
+import LiveSessionMonitor from './pages/LiveSessionMonitor';
+import TestResultsDashboard from './pages/TestResultsDashboard';
+import UserManagementPage from './pages/UserManagement';
+import UserDetailsPage from './pages/UserDetails';
+import { NotificationProvider } from './context/NotificationContext';
+import PendingRequests from './pages/PendingRequests';
+import GrantAttemptsPage from './pages/GrantAttemptsPage';
 
 // Placeholder components for missing pages
 const PlaceholderPage = ({ title }: { title: string }) => (
@@ -261,7 +268,7 @@ const SSOCallback = () => {
 
 function AppRoutes() {
   return (
-    <div style={{ paddingTop: '80px' }}>
+    <div style={{ paddingTop: '110px' }}>
       <Routes>
         {/* Public Routes with Smart Redirects */}
         <Route path="/" element={<PublicRoute><LandingPage /></PublicRoute>} />
@@ -352,7 +359,15 @@ function AppRoutes() {
           path="/admin/users"
           element={
             <AdminRoute>
-              <PlaceholderPage title="User Management" />
+              <UserManagementPage />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/admin/users/:userId'
+          element={
+            <AdminRoute>
+              <UserDetailsPage />6
             </AdminRoute>
           }
         />
@@ -461,10 +476,19 @@ function AppRoutes() {
 
         {/* Other Admin Routes */}
         <Route
-          path="/admin/test-sessions"
+          path="/admin/sessions/active"
           element={
             <AdminRoute>
-              <PlaceholderPage title="Test Sessions Monitor" />
+              <LiveSessionMonitor />
+            </AdminRoute>
+          }
+        />
+
+        <Route
+          path="/admin/results"
+          element={
+            <AdminRoute>
+              <TestResultsDashboard />
             </AdminRoute>
           }
         />
@@ -517,6 +541,31 @@ function AppRoutes() {
           }
         />
 
+        <Route
+          path="/admin/attempt-requests"
+          element={
+            <AdminRoute>
+              <PendingRequests />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/grant-attempts"
+          element={
+            <AdminRoute>
+              <GrantAttemptsPage />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/attempt-history"
+          element={
+            <AdminRoute>
+              <PlaceholderPage title="Attempt Request History" />
+            </AdminRoute>
+          }
+        />
+
         {/* ✅ UPDATED: Profile/Settings - Use ProtectedRoute for all roles */}
         <Route
           path="/profile"
@@ -561,12 +610,14 @@ function App() {
     <Router>
       <AuthProvider>
         <SocketProvider>
-          <TestSessionProvider>
-            <div>
-              <AppNavbar />
-              <AppRoutes />
-            </div>
-          </TestSessionProvider>
+          <NotificationProvider>
+            <TestSessionProvider>
+              <div>
+                <AppNavbar />
+                <AppRoutes />
+              </div>
+            </TestSessionProvider>
+          </NotificationProvider>
         </SocketProvider>
       </AuthProvider>
     </Router>

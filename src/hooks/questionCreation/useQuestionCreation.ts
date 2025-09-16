@@ -15,18 +15,15 @@ import ApiService from '../../services/ApiService';
 
 // Import alignment utilities
 import {
-    createSubmissionReadyQuestion,
-    validateRequiredFieldsForSubmission
+    createSubmissionReadyQuestion
 } from '../../services/questionSubmissionService';
 
 import {
-    DynamicFormValidator,
     useDynamicValidation,
     getAvailableQuestionTypes
 } from '../../utils/dynamicFormValidation';
 
 import {
-    TestCaseBuilder,
     useTestCaseBuilder,
     formatTestCaseForDisplay,
     formatTestSuiteForPreview
@@ -54,14 +51,6 @@ export const useQuestionCreation = (initialQuestion?: Partial<Question>, mode: '
     // Initialize with existing question data
     useEffect(() => {
         if (initialQuestion && (mode === 'edit' || mode === 'duplicate') && !initializedRef.current) {
-            console.log('Initializing question creation with data:', {
-                mode,
-                questionId: initialQuestion._id,
-                title: initialQuestion.title,
-                type: initialQuestion.type,
-                language: initialQuestion.language,
-                category: initialQuestion.category
-            });
 
             dispatch({
                 type: 'INITIALIZE_FROM_QUESTION',
@@ -167,102 +156,26 @@ export const useQuestionCreation = (initialQuestion?: Partial<Question>, mode: '
                 solutionCode: state.questionData.solutionCode,
             };
 
-            console.log('=== DETAILED UPDATE DEBUG START ===');
-            console.log('Edit Mode:', isEditMode);
-            console.log('Original Question ID:', originalQuestionId.current);
-            console.log('Question Type:', state.selectedQuestionType);
-            console.log('');
-
-            console.log('STATE VALUES:');
-            console.log('- state.questionData.codeTemplate:', state.questionData.codeTemplate);
-            console.log('- state.questionData.buggyCode:', state.questionData.buggyCode);
-            console.log('- state.questionData.solutionCode:', state.questionData.solutionCode);
-            console.log('- state.questionData.options:', state.questionData.options);
-            console.log('- state.testCases length:', state.testCases?.length);
-            console.log('');
-
-            console.log('RAW QUESTION DATA:');
-            console.log('- rawQuestionData.codeTemplate:', rawQuestionData.codeTemplate);
-            console.log('- rawQuestionData.buggyCode:', rawQuestionData.buggyCode);
-            console.log('- rawQuestionData.solutionCode:', rawQuestionData.solutionCode);
-            console.log('- rawQuestionData.testCases length:', rawQuestionData.testCases?.length);
-            console.log('- Full rawQuestionData:', JSON.stringify(rawQuestionData, null, 2));
-            console.log('');
-
-            console.log('Basic operation info:', {
-                mode: isEditMode ? 'edit' : isDuplicateMode ? 'duplicate' : 'create',
-                questionId: originalQuestionId.current,
-                title: rawQuestionData.title,
-                type: rawQuestionData.type,
-                language: rawQuestionData.language
-            });
-
             // Use submission service for final validation and cleaning
-            console.log('CALLING SUBMISSION SERVICE...');
             const submissionResult = createSubmissionReadyQuestion(rawQuestionData);
 
-            console.log('SUBMISSION SERVICE RESULT:');
-            console.log('- Success:', submissionResult.success);
-            console.log('- Errors:', submissionResult.errors);
-
             if (!submissionResult.success) {
-                console.log('❌ SUBMISSION SERVICE FAILED');
                 throw new Error(`Validation failed: ${submissionResult.errors.join(', ')}`);
             }
 
             const cleanedQuestionData = submissionResult.data!;
 
-            console.log('CLEANED QUESTION DATA:');
-            console.log('- cleanedQuestionData.codeTemplate:', cleanedQuestionData.codeTemplate);
-            console.log('- cleanedQuestionData.buggyCode:', cleanedQuestionData.buggyCode);
-            console.log('- cleanedQuestionData.solutionCode:', cleanedQuestionData.solutionCode);
-            console.log('- cleanedQuestionData.testCases length:', cleanedQuestionData.testCases?.length);
-            console.log('- Fields in cleaned data:', Object.keys(cleanedQuestionData));
-            console.log('- Full cleanedQuestionData:', JSON.stringify(cleanedQuestionData, null, 2));
-            console.log('');
-
-            console.log('COMPARISON - RAW vs CLEANED:');
-            console.log('CodeTemplate - Raw:', rawQuestionData.codeTemplate?.substring(0, 100) + '...');
-            console.log('CodeTemplate - Cleaned:', cleanedQuestionData.codeTemplate?.substring(0, 100) + '...');
-            console.log('CodeTemplate - Same?', rawQuestionData.codeTemplate === cleanedQuestionData.codeTemplate);
-            console.log('');
-
             // Choose API method based on mode
             let response;
             if (isEditMode && originalQuestionId.current) {
-                console.log('🔄 UPDATING EXISTING QUESTION');
-                console.log('Sending to updateQuestion API:', {
-                    questionId: originalQuestionId.current,
-                    hasCodeTemplate: !!cleanedQuestionData.codeTemplate,
-                    codeTemplateLength: cleanedQuestionData.codeTemplate?.length,
-                    payload: cleanedQuestionData
-                });
-
                 response = await ApiService.updateQuestion(originalQuestionId.current, cleanedQuestionData);
-
-                console.log('UPDATE API RESPONSE:');
-                console.log('- Response type:', typeof response);
-                console.log('- Response keys:', Object.keys(response || {}));
-                console.log('- Full response:', response);
             } else {
-                console.log('✨ CREATING NEW QUESTION');
                 response = await ApiService.createQuestion(cleanedQuestionData);
-
-                console.log('CREATE API RESPONSE:');
-                console.log('- Response type:', typeof response);
-                console.log('- Response keys:', Object.keys(response || {}));
             }
 
             const questionResult = extractQuestionFromResponse(response);
 
-            console.log('EXTRACTED QUESTION RESULT:');
-            console.log('- Has question result:', !!questionResult);
-            console.log('- Question ID:', questionResult?._id);
-            console.log('- Result codeTemplate:', questionResult?.codeTemplate?.substring(0, 100) + '...');
-            console.log('- Result codeTemplate length:', questionResult?.codeTemplate?.length);
-
             if (!questionResult || !questionResult._id) {
-                console.log('❌ INVALID QUESTION RESULT');
                 throw new Error(`Question was ${isEditMode ? 'updated' : 'created'} but response is invalid`);
             }
 
@@ -273,9 +186,6 @@ export const useQuestionCreation = (initialQuestion?: Partial<Question>, mode: '
                 'globally (available to all organizations)' :
                 `for ${state.organizationName}`;
 
-            console.log('✅ SUCCESS - Question', actionText);
-            console.log('=== DETAILED UPDATE DEBUG END ===');
-
             dispatch({
                 type: 'SET_CREATION_SUCCESS',
                 payload: `Question "${questionResult.title}" has been ${actionText} ${scopeMessage}!`
@@ -285,11 +195,6 @@ export const useQuestionCreation = (initialQuestion?: Partial<Question>, mode: '
 
         } catch (error: any) {
             console.error('❌ SAVE QUESTION ERROR:', error);
-            console.log('Error details:', {
-                message: error.message,
-                response: error.response?.data,
-                stack: error.stack
-            });
 
             const actionText = isEditMode ? 'update' : 'save';
             const errorMessage = error.message || error.response?.data?.message || `Failed to ${actionText} question`;

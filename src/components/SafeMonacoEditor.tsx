@@ -115,17 +115,6 @@ const SafeMonacoEditor: React.FC<SafeMonacoEditorProps> = ({
     }
   };
 
-  const handleLoadError = (error: any) => {
-    console.error('Monaco Editor load error:', error);
-    setLoadError('Failed to load code editor');
-    setUseTextarea(true);
-    setIsLoading(false);
-    
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-  };
-
   // Fallback to textarea
   if (useTextarea || loadError) {
     return (

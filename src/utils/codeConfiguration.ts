@@ -163,7 +163,7 @@ export class CodeConfigManager {
   /**
    * DEFAULT CONFIG: Create default code config for language (backend compatible)
    */
-  static createDefaultConfig(language: Language, category: QuestionCategory): CodeConfig {
+  static createDefaultConfig(language: Language, _category: QuestionCategory): CodeConfig {
     const runtimes = this.getRuntimeEnvironments(language);
     const defaultRuntime = runtimes.length > 0 ? runtimes[0] : undefined;
 

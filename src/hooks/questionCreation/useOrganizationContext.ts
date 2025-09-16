@@ -33,13 +33,6 @@ export const useOrganizationContext = (
       }
     });
 
-    console.log('Question creation initialized:', {
-      user: user.loginId,
-      organization: user.organization.name,
-      isSuperOrg,
-      canCreateGlobal,
-      autoGlobalSetting: isSuperOrg ? 'Questions will be global by default' : 'Questions will be organization-scoped'
-    });
   }, [user, dispatch]);
 
   const toggleGlobalQuestion = useCallback(() => {

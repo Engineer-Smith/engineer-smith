@@ -87,7 +87,7 @@ export const useTestSession = () => {
 
 export const TestSessionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navigate = useNavigate();
-  const { timerState, networkStatus, connectionStatus, registerEventHandlers, joinSession, leaveSession } = useSocket();
+  const { networkStatus, connectionStatus, registerEventHandlers, joinSession, leaveSession } = useSocket();
 
   // Track initial timer value for hybrid hook
   const [initialTimerValue, setInitialTimerValue] = React.useState<number | null>(null);
@@ -307,10 +307,10 @@ export const TestSessionProvider: React.FC<{ children: React.ReactNode }> = ({ c
           }));
 
           const currentSessionId = state.sessionId;
-          
+
           if (currentSessionId) {
             leaveSession(currentSessionId);
-            
+
             setTimeout(() => {
               resetSessionState();
               navigateToResults(currentSessionId, finalScore, {
@@ -333,10 +333,10 @@ export const TestSessionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }));
 
         const errorSessionId = state.sessionId;
-        
+
         if (errorSessionId) {
           leaveSession(errorSessionId);
-          
+
           setTimeout(() => {
             resetSessionState();
             navigateToResults(errorSessionId, undefined, {
@@ -398,7 +398,7 @@ export const TestSessionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
         if (currentSessionId) {
           leaveSession(currentSessionId);
-          
+
           setTimeout(() => {
             resetSessionState();
             if (finalScore) {
@@ -623,6 +623,11 @@ export const TestSessionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const finalScore: SessionFinalScore = result.finalScore || result;
       const currentSessionId = state.sessionId;
 
+      // Immediately disconnect from the session since test is completed
+      if (currentSessionId) {
+        leaveSession(currentSessionId);
+      }
+
       setState(prev => ({
         ...prev,
         finalScore,
@@ -630,14 +635,10 @@ export const TestSessionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         submitting: false,
       }));
 
-      if (currentSessionId) {
-        leaveSession(currentSessionId);
-
-        setTimeout(() => {
-          resetSessionState();
-          navigateToResults(currentSessionId, finalScore, { manualSubmission: true });
-        }, 2000);
-      }
+      setTimeout(() => {
+        resetSessionState();
+        navigateToResults(currentSessionId, finalScore, { manualSubmission: true });
+      }, 2000);
 
       toast.success('Test submitted successfully! Redirecting to results...', {
         autoClose: 2000

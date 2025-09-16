@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardBody, Button, Spinner, Alert } from 'reactstrap';
+import { Card, CardBody, Button, Spinner } from 'reactstrap';
 import { Search, RefreshCw, Eye, CheckCircle, AlertTriangle } from 'lucide-react';
 import { useQuestionCreation } from '../../../context/QuestionCreationContext';
 
@@ -12,7 +12,6 @@ const DuplicateCheckCard: React.FC = () => {
     questionData,
     duplicateChecking,
     duplicatesFound,
-    showDuplicateWarning
   } = state;
 
   // Auto-run duplicate check when component mounts
@@ -59,26 +58,6 @@ const DuplicateCheckCard: React.FC = () => {
         checkHash: state.lastDuplicateCheck 
       } 
     });
-  };
-
-  // Alternative approach if the above doesn't work
-  const handleShowDuplicateModal = () => {
-    // Manually trigger the modal by updating the state
-    dispatch({
-      type: 'UPDATE_QUESTION_DATA', // Use existing action
-      payload: {} // Empty payload to trigger re-render
-    });
-    
-    // Then immediately set duplicates to show modal
-    setTimeout(() => {
-      dispatch({ 
-        type: 'SET_DUPLICATES', 
-        payload: { 
-          duplicates: duplicatesFound, 
-          checkHash: Date.now().toString() 
-        } 
-      });
-    }, 0);
   };
 
   return (

@@ -1,4 +1,4 @@
-// src/context/SocketContext.tsx - ENHANCED with client-side timer countdown
+// src/context/SocketContext.tsx - FIXED to prevent double event registration
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { toast } from 'react-toastify';
 import socketService from '../services/SocketService';
@@ -6,29 +6,71 @@ import { useAuth } from './AuthContext';
 import { useNetworkStatus } from '../hooks/testSession/useNetworkStatus';
 import type { SessionErrorEvent } from '../types';
 
-// FIXED: Backend timer:sync event structure (from timerService.js sendTimerSync)
+// Existing timer event interfaces...
 interface TimerSyncEvent {
   sessionId: string;
-  timeRemaining: number;  // Backend: timerData.timeRemaining
-  serverTime: number;     // Backend: Date.now()
-  sectionIndex: number;   // Backend: timerData.sectionIndex || 0
-  type: string;          // Backend: timerData.type || 'regular'
+  timeRemaining: number;
+  serverTime: number;
+  sectionIndex: number;
+  type: string;
 }
 
-// Backend section:expired event structure (from testSessionController.js sendSectionExpired)
 interface SectionExpiredEvent {
   sessionId: string;
-  newSectionIndex: number;  // Backend: data.newSectionIndex
-  message: string;          // Backend: data.message || 'Section time expired'
-  timestamp: string;        // Backend: new Date().toISOString()
+  newSectionIndex: number;
+  message: string;
+  timestamp: string;
 }
 
-// Backend test:completed event structure (from testSessionController.js sendTestCompleted)
 interface TestCompletedEvent {
   sessionId: string;
-  message: string;    // Backend: data.message || 'Test completed'
-  result: any;        // Backend: data.result
-  timestamp: string;  // Backend: new Date().toISOString()
+  message: string;
+  result: any;
+  timestamp: string;
+}
+
+// NEW: Notification event interfaces
+interface NotificationReceivedEvent {
+  _id?: string;
+  recipientId?: string;
+  senderId?: string;
+  organizationId?: string;
+  recipientRole?: string; // NEW: For socket-based role targeting
+  type: string;
+  title: string;
+  message: string;
+  relatedModel?: string;
+  relatedId?: string;
+  actionUrl?: string;
+  actionText?: string;
+  createdAt?: string;
+  sender?: any;
+  data?: any;
+}
+
+interface NotificationBadgeUpdateEvent {
+  unreadCount: number;
+}
+
+interface NotificationsUnreadCountEvent {
+  count: number;
+}
+
+interface NotificationsRecentEvent {
+  notifications: any[];
+}
+
+interface AttemptRequestEvent {
+  success: boolean;
+  requestId?: string;
+  decision?: string;
+  message?: string;
+}
+
+interface OverrideGrantedEvent {
+  success: boolean;
+  override?: any;
+  message?: string;
 }
 
 interface ConnectionStatus {
@@ -39,24 +81,23 @@ interface ConnectionStatus {
   reconnectAttempts?: number;
 }
 
-// ENHANCED: Timer state with client-side countdown tracking
 interface TimerState {
   timeRemaining: number;
-  serverTime?: number;      // From backend timer:sync
-  sectionIndex?: number;    // From backend (flat number)
-  type?: string;           // From backend ('regular', etc.)
-  isActive: boolean;       // Calculated: timeRemaining > 0 && isOnline
-  isPaused: boolean;       // Calculated: !isOnline || !isConnected
-  // NEW: Client-side countdown management
-  lastSyncTime?: number;    // When we last synced with server (Date.now())
-  lastSyncValue?: number;   // Server time remaining value at last sync
-  countdownStartTime?: number; // When client countdown started
-  currentSection?: {       // Generated from sectionIndex
+  serverTime?: number;
+  sectionIndex?: number;
+  type?: string;
+  isActive: boolean;
+  isPaused: boolean;
+  lastSyncTime?: number;
+  lastSyncValue?: number;
+  countdownStartTime?: number;
+  currentSection?: {
     index: number;
     name?: string;
   };
 }
 
+// ENHANCED: Extended event handler interface
 interface SocketContextType {
   connectionStatus: ConnectionStatus;
   isConnected: boolean;
@@ -68,11 +109,22 @@ interface SocketContextType {
   
   timerState: TimerState;
   
+  // ENHANCED: Support both timer and notification events
   registerEventHandlers: (handlers: {
+    // Timer events
     onTimerSync?: (data: TimerSyncEvent) => void;
     onSectionExpired?: (data: SectionExpiredEvent) => void;
     onTestCompleted?: (data: TestCompletedEvent) => void;
     onSessionError?: (data: SessionErrorEvent) => void;
+    
+    // Notification events
+    onNotificationReceived?: (data: NotificationReceivedEvent) => void;
+    onNotificationBadgeUpdate?: (data: NotificationBadgeUpdateEvent) => void;
+    onNotificationsUnreadCount?: (data: NotificationsUnreadCountEvent) => void;
+    onNotificationsRecent?: (data: NotificationsRecentEvent) => void;
+    onAttemptRequestSubmitted?: (data: AttemptRequestEvent) => void;
+    onAttemptRequestReviewed?: (data: AttemptRequestEvent) => void;
+    onOverrideGranted?: (data: OverrideGrantedEvent) => void;
   }) => () => void;
 }
 
@@ -98,33 +150,38 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   
-  // ENHANCED: Timer state with countdown tracking
   const [timerState, setTimerState] = useState<TimerState>({
     timeRemaining: 0,
     isActive: false,
     isPaused: false,
   });
 
+  // FIXED: Track registration state to prevent duplicates
   const eventHandlerRefs = useRef<{
     onTimerSync?: (data: TimerSyncEvent) => void;
     onSectionExpired?: (data: SectionExpiredEvent) => void;
     onTestCompleted?: (data: TestCompletedEvent) => void;
     onSessionError?: (data: SessionErrorEvent) => void;
+    onNotificationReceived?: (data: NotificationReceivedEvent) => void;
+    onNotificationBadgeUpdate?: (data: NotificationBadgeUpdateEvent) => void;
+    onNotificationsUnreadCount?: (data: NotificationsUnreadCountEvent) => void;
+    onNotificationsRecent?: (data: NotificationsRecentEvent) => void;
+    onAttemptRequestSubmitted?: (data: AttemptRequestEvent) => void;
+    onAttemptRequestReviewed?: (data: AttemptRequestEvent) => void;
+    onOverrideGranted?: (data: OverrideGrantedEvent) => void;
   }>({});
 
   const cleanupFunctionsRef = useRef<(() => void)[]>([]);
-  
-  // NEW: Client-side countdown interval
   const countdownIntervalRef = useRef<number | null>(null);
+  
+  // FIXED: Track if base socket handlers are registered
+  const baseHandlersRegistered = useRef<boolean>(false);
 
-  // NEW: Start client-side countdown
+  // Timer countdown functions (unchanged)
   const startCountdown = useCallback((initialTime: number, syncTime: number) => {
-    // Clear any existing countdown
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
     }
-
-    console.log(`Starting client countdown from ${initialTime} seconds`);
 
     const startTime = Date.now();
     
@@ -133,12 +190,10 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const newTimeRemaining = Math.max(0, initialTime - elapsed);
       
       setTimerState(prev => {
-        // Only update if the timer is active and not paused
         if (!prev.isActive || prev.isPaused) {
           return prev;
         }
 
-        // If timer reaches 0, mark as inactive
         const isStillActive = newTimeRemaining > 0 && networkStatus.isOnline && connectionStatus.isConnected;
         
         return {
@@ -148,7 +203,6 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
       });
 
-      // Stop countdown when it reaches 0
       if (newTimeRemaining <= 0) {
         if (countdownIntervalRef.current) {
           clearInterval(countdownIntervalRef.current);
@@ -157,7 +211,6 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     }, 1000);
 
-    // Update timer state with countdown metadata
     setTimerState(prev => ({
       ...prev,
       lastSyncTime: syncTime,
@@ -166,30 +219,24 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }));
   }, [networkStatus.isOnline, connectionStatus.isConnected]);
 
-  // NEW: Stop client-side countdown
   const stopCountdown = useCallback(() => {
     if (countdownIntervalRef.current) {
-      console.log('Stopping client countdown');
       clearInterval(countdownIntervalRef.current);
       countdownIntervalRef.current = null;
     }
   }, []);
 
-  // NEW: Pause/resume countdown based on connection status
+  // Timer state management (unchanged)
   useEffect(() => {
     setTimerState(prev => {
       const shouldBePaused = !networkStatus.isOnline || !connectionStatus.isConnected;
       const shouldBeActive = prev.timeRemaining > 0 && !shouldBePaused;
 
-      // If pausing, stop the countdown
       if (shouldBePaused && !prev.isPaused && countdownIntervalRef.current) {
-        console.log('Pausing countdown due to connection issues');
         stopCountdown();
       }
       
-      // If resuming and we have time remaining, restart countdown
       if (!shouldBePaused && prev.isPaused && prev.timeRemaining > 0) {
-        console.log('Resuming countdown after reconnection');
         startCountdown(prev.timeRemaining, Date.now());
       }
 
@@ -201,7 +248,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
   }, [networkStatus.isOnline, connectionStatus.isConnected, startCountdown, stopCountdown]);
 
-  // Update connection status when network changes
+  // Network status updates (unchanged)
   useEffect(() => {
     setConnectionStatus(prev => {
       const newStatus = { ...prev, isOnline: networkStatus.isOnline };
@@ -222,7 +269,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
   }, [networkStatus.isOnline]);
 
-  // Socket connection management
+  // FIXED: Socket connection management - prevent double registration
   useEffect(() => {
     if (!isAuthenticated || !user || !networkStatus.isOnline) {
       if (socketService.isConnected()) {
@@ -235,7 +282,9 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }));
       setCurrentSessionId(null);
       
-      // Clear timer and countdown
+      // FIXED: Reset registration flag
+      baseHandlersRegistered.current = false;
+      
       stopCountdown();
       setTimerState({
         timeRemaining: 0,
@@ -259,128 +308,206 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           reconnectAttempts: 0,
         }));
 
-        const cleanupFunctions: (() => void)[] = [];
+        // FIXED: Only register base handlers once per connection
+        if (!baseHandlersRegistered.current) {
+          
+          const cleanupFunctions: (() => void)[] = [];
 
-        // 1. Session joined
-        cleanupFunctions.push(
-          socketService.onSessionJoined((data) => {
-            console.log('SocketProvider: Session joined:', data);
-            toast.success(data.message || 'Successfully joined session');
-          })
-        );
+          // =====================
+          // SESSION & TIMER EVENTS (existing)
+          // =====================
 
-        // 2. ENHANCED: Timer sync handler with countdown start
-        cleanupFunctions.push(
-          socketService.onTimerSync((data: TimerSyncEvent) => {
-            console.log('SocketProvider: Timer sync received:', data);
-            
-            const syncTime = Date.now();
-            
-            setTimerState(prev => {
-              const shouldBeActive = data.timeRemaining > 0 && networkStatus.isOnline && connectionStatus.isConnected;
-              const shouldBePaused = !networkStatus.isOnline || !connectionStatus.isConnected;
+          cleanupFunctions.push(
+            socketService.onSessionJoined((data) => {
+              toast.success(data.message || 'Successfully joined session');
+            })
+          );
 
-              return {
-                ...prev,
-                timeRemaining: data.timeRemaining,
-                serverTime: data.serverTime,
-                sectionIndex: data.sectionIndex,
-                type: data.type,
-                isActive: shouldBeActive,
-                isPaused: shouldBePaused,
-                currentSection: data.sectionIndex !== undefined ? { 
-                  index: data.sectionIndex,
-                  name: `Section ${data.sectionIndex + 1}`
-                } : prev.currentSection,
-              };
-            });
+          cleanupFunctions.push(
+            socketService.onTimerSync((data: TimerSyncEvent) => {
+              
+              const syncTime = Date.now();
+              
+              setTimerState(prev => {
+                const shouldBeActive = data.timeRemaining > 0 && networkStatus.isOnline && connectionStatus.isConnected;
+                const shouldBePaused = !networkStatus.isOnline || !connectionStatus.isConnected;
 
-            // Start client countdown if timer is active
-            if (data.timeRemaining > 0 && networkStatus.isOnline && connectionStatus.isConnected) {
-              startCountdown(data.timeRemaining, syncTime);
-            } else {
-              stopCountdown();
-            }
+                return {
+                  ...prev,
+                  timeRemaining: data.timeRemaining,
+                  serverTime: data.serverTime,
+                  sectionIndex: data.sectionIndex,
+                  type: data.type,
+                  isActive: shouldBeActive,
+                  isPaused: shouldBePaused,
+                  currentSection: data.sectionIndex !== undefined ? { 
+                    index: data.sectionIndex,
+                    name: `Section ${data.sectionIndex + 1}`
+                  } : prev.currentSection,
+                };
+              });
 
-            // Call user handler
-            if (eventHandlerRefs.current.onTimerSync) {
-              eventHandlerRefs.current.onTimerSync(data);
-            }
-          })
-        );
-
-        // 3. Section expired handler
-        cleanupFunctions.push(
-          socketService.onSectionExpired((data: SectionExpiredEvent) => {
-            console.log('SocketProvider: Section expired:', data);
-            
-            // Stop current countdown since section changed
-            stopCountdown();
-            
-            setTimerState(prev => ({
-              ...prev,
-              sectionIndex: data.newSectionIndex,
-              currentSection: {
-                index: data.newSectionIndex,
-                name: `Section ${data.newSectionIndex + 1}`
+              if (data.timeRemaining > 0 && networkStatus.isOnline && connectionStatus.isConnected) {
+                startCountdown(data.timeRemaining, syncTime);
+              } else {
+                stopCountdown();
               }
-            }));
 
-            toast.info(data.message, {
-              position: 'top-center',
-              toastId: `section-expired-${data.newSectionIndex}`
-            });
+              if (eventHandlerRefs.current.onTimerSync) {
+                eventHandlerRefs.current.onTimerSync(data);
+              }
+            })
+          );
 
-            if (eventHandlerRefs.current.onSectionExpired) {
-              eventHandlerRefs.current.onSectionExpired(data);
-            }
-          })
-        );
+          cleanupFunctions.push(
+            socketService.onSectionExpired((data: SectionExpiredEvent) => {
+              
+              stopCountdown();
+              
+              setTimerState(prev => ({
+                ...prev,
+                sectionIndex: data.newSectionIndex,
+                currentSection: {
+                  index: data.newSectionIndex,
+                  name: `Section ${data.newSectionIndex + 1}`
+                }
+              }));
 
-        // 4. Test completed handler
-        cleanupFunctions.push(
-          socketService.onTestCompleted((data: TestCompletedEvent) => {
-            console.log('SocketProvider: Test completed:', data);
-            
-            // Stop countdown and clear session state
-            stopCountdown();
-            setCurrentSessionId(null);
-            setTimerState({
-              timeRemaining: 0,
-              isActive: false,
-              isPaused: false,
-            });
+              toast.info(data.message, {
+                position: 'top-center',
+                toastId: `section-expired-${data.newSectionIndex}`
+              });
 
-            toast.success(data.message, {
-              autoClose: false,
-              position: 'top-center',
-              toastId: 'test-completed'
-            });
+              if (eventHandlerRefs.current.onSectionExpired) {
+                eventHandlerRefs.current.onSectionExpired(data);
+              }
+            })
+          );
 
-            if (eventHandlerRefs.current.onTestCompleted) {
-              eventHandlerRefs.current.onTestCompleted(data);
-            }
-          })
-        );
+          cleanupFunctions.push(
+            socketService.onTestCompleted((data: TestCompletedEvent) => {
+              
+              stopCountdown();
+              setCurrentSessionId(null);
+              setTimerState({
+                timeRemaining: 0,
+                isActive: false,
+                isPaused: false,
+              });
 
-        // 5. Session error handler
-        cleanupFunctions.push(
-          socketService.onSessionError((data: SessionErrorEvent) => {
-            console.error('SocketProvider: Session error:', data);
-            
-            toast.error(data.message, {
-              autoClose: 5000,
-              position: 'top-center',
-              toastId: 'session-error'
-            });
+              toast.success(data.message, {
+                autoClose: false,
+                position: 'top-center',
+                toastId: 'test-completed'
+              });
 
-            if (eventHandlerRefs.current.onSessionError) {
-              eventHandlerRefs.current.onSessionError(data);
-            }
-          })
-        );
+              if (eventHandlerRefs.current.onTestCompleted) {
+                eventHandlerRefs.current.onTestCompleted(data);
+              }
+            })
+          );
 
-        cleanupFunctionsRef.current = cleanupFunctions;
+          cleanupFunctions.push(
+            socketService.onSessionError((data: SessionErrorEvent) => {
+              console.error('SocketProvider: Session error:', data);
+              
+              toast.error(data.message, {
+                autoClose: 5000,
+                position: 'top-center',
+                toastId: 'session-error'
+              });
+
+              if (eventHandlerRefs.current.onSessionError) {
+                eventHandlerRefs.current.onSessionError(data);
+              }
+            })
+          );
+
+          // =====================
+          // NOTIFICATION EVENTS - FIXED: Single registration
+          // =====================
+
+          if (socketService.onNotificationReceived) {
+            cleanupFunctions.push(
+              socketService.onNotificationReceived((data: NotificationReceivedEvent) => {
+                
+                // FIXED: Only forward to registered handlers, don't process here
+                if (eventHandlerRefs.current.onNotificationReceived) {
+                  eventHandlerRefs.current.onNotificationReceived(data);
+                }
+              })
+            );
+          }
+
+          if (socketService.onNotificationBadgeUpdate) {
+            cleanupFunctions.push(
+              socketService.onNotificationBadgeUpdate((data: NotificationBadgeUpdateEvent) => {
+                
+                if (eventHandlerRefs.current.onNotificationBadgeUpdate) {
+                  eventHandlerRefs.current.onNotificationBadgeUpdate(data);
+                }
+              })
+            );
+          }
+
+          if (socketService.onNotificationsUnreadCount) {
+            cleanupFunctions.push(
+              socketService.onNotificationsUnreadCount((data: NotificationsUnreadCountEvent) => {
+                
+                if (eventHandlerRefs.current.onNotificationsUnreadCount) {
+                  eventHandlerRefs.current.onNotificationsUnreadCount(data);
+                }
+              })
+            );
+          }
+
+          if (socketService.onNotificationsRecent) {
+            cleanupFunctions.push(
+              socketService.onNotificationsRecent((data: NotificationsRecentEvent) => {
+                
+                if (eventHandlerRefs.current.onNotificationsRecent) {
+                  eventHandlerRefs.current.onNotificationsRecent(data);
+                }
+              })
+            );
+          }
+
+          if (socketService.onAttemptRequestSubmitted) {
+            cleanupFunctions.push(
+              socketService.onAttemptRequestSubmitted((data: AttemptRequestEvent) => {
+                
+                if (eventHandlerRefs.current.onAttemptRequestSubmitted) {
+                  eventHandlerRefs.current.onAttemptRequestSubmitted(data);
+                }
+              })
+            );
+          }
+
+          if (socketService.onAttemptRequestReviewed) {
+            cleanupFunctions.push(
+              socketService.onAttemptRequestReviewed((data: AttemptRequestEvent) => {
+                
+                if (eventHandlerRefs.current.onAttemptRequestReviewed) {
+                  eventHandlerRefs.current.onAttemptRequestReviewed(data);
+                }
+              })
+            );
+          }
+
+          if (socketService.onOverrideGranted) {
+            cleanupFunctions.push(
+              socketService.onOverrideGranted((data: OverrideGrantedEvent) => {
+                
+                if (eventHandlerRefs.current.onOverrideGranted) {
+                  eventHandlerRefs.current.onOverrideGranted(data);
+                }
+              })
+            );
+          }
+
+          cleanupFunctionsRef.current = cleanupFunctions;
+          baseHandlersRegistered.current = true;
+        }
 
       } catch (error) {
         console.error('SocketProvider: Failed to connect socket:', error);
@@ -389,18 +516,18 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           isConnected: false,
           reconnectAttempts: (prev.reconnectAttempts || 0) + 1,
         }));
+        baseHandlersRegistered.current = false;
       }
     };
 
     connectSocket();
 
-    // Connection health check
     const connectionInterval = setInterval(() => {
       const isConnected = socketService.isConnected();
       setConnectionStatus(prev => ({ ...prev, isConnected }));
 
       if (!isConnected && networkStatus.isOnline && isAuthenticated) {
-        console.log('SocketProvider: Connection lost, attempting to reconnect...');
+        baseHandlersRegistered.current = false; // Reset on reconnection
         connectSocket();
       }
     }, 5000);
@@ -409,12 +536,13 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       clearInterval(connectionInterval);
       cleanupFunctionsRef.current.forEach(cleanup => cleanup());
       cleanupFunctionsRef.current = [];
-      stopCountdown(); // Clear countdown on cleanup
+      baseHandlersRegistered.current = false;
+      stopCountdown();
       socketService.disconnect();
     };
-  }, [isAuthenticated, user, networkStatus.isOnline, connectionStatus.isConnected, startCountdown, stopCountdown]);
+  }, [isAuthenticated, user, networkStatus.isOnline, startCountdown, stopCountdown]);
 
-  // Update connection status with session info
+  // Session management (unchanged)
   useEffect(() => {
     setConnectionStatus(prev => ({
       ...prev,
@@ -422,16 +550,13 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }));
   }, [currentSessionId]);
 
-  // Cleanup countdown on unmount
   useEffect(() => {
     return () => {
       stopCountdown();
     };
   }, [stopCountdown]);
 
-  // Session management
   const joinSession = useCallback(async (sessionId: string) => {
-    console.log('SocketProvider: Joining session', sessionId);
     try {
       await socketService.joinTestSession(sessionId);
       setCurrentSessionId(sessionId);
@@ -442,7 +567,6 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, []);
 
   const leaveSession = useCallback(async (sessionId: string) => {
-    console.log('SocketProvider: Leaving session', sessionId);
     try {
       await socketService.leaveTestSession(sessionId);
       
@@ -460,14 +584,24 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [currentSessionId, stopCountdown]);
 
-  // Event handler registration
+  // ENHANCED: Event handler registration for ALL events
   const registerEventHandlers = useCallback((handlers: {
     onTimerSync?: (data: TimerSyncEvent) => void;
     onSectionExpired?: (data: SectionExpiredEvent) => void;
     onTestCompleted?: (data: TestCompletedEvent) => void;
     onSessionError?: (data: SessionErrorEvent) => void;
+    onNotificationReceived?: (data: NotificationReceivedEvent) => void;
+    onNotificationBadgeUpdate?: (data: NotificationBadgeUpdateEvent) => void;
+    onNotificationsUnreadCount?: (data: NotificationsUnreadCountEvent) => void;
+    onNotificationsRecent?: (data: NotificationsRecentEvent) => void;
+    onAttemptRequestSubmitted?: (data: AttemptRequestEvent) => void;
+    onAttemptRequestReviewed?: (data: AttemptRequestEvent) => void;
+    onOverrideGranted?: (data: OverrideGrantedEvent) => void;
   }) => {
+    
+    // FIXED: Replace handlers instead of merging to prevent accumulation
     eventHandlerRefs.current = handlers;
+    
     return () => {
       eventHandlerRefs.current = {};
     };

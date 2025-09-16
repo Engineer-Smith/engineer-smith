@@ -21,9 +21,7 @@ export type {
 
 import type { 
   QuestionCreationState,  // Import the full state type
-  QuestionCreationAction,
-  WizardStep,
-  DuplicateQuestion
+  QuestionCreationAction
 } from '../hooks/questionCreation/types';
 
 // Enhanced context type with all methods including cancel and edit support

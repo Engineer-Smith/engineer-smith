@@ -1,11 +1,12 @@
 // src/utils/dynamicFormValidation.ts - Dynamic form validation based on question type and category
 
-import type { QuestionType, QuestionCategory, CreateQuestionData, Language } from '../types';
+import type { CreateQuestionData, Language, QuestionCategory, QuestionType } from '../types';
 import {
-    isValidQuestionTypeForCategory,
     getAllowedQuestionTypes,
+    getValidCategories,
     isValidLanguageCategoryCombo,
-    getValidCategories
+    isValidQuestionTypeForCategory,
+    isValidQuestionTypeForLanguageAndCategory
 } from '../types/common';
 
 export interface ValidationResult {
@@ -24,7 +25,7 @@ export interface FieldRequirement {
 }
 
 /**
- * ✅ MASTER: Dynamic field requirements based on question type and category
+ * MASTER: Dynamic field requirements based on question type and category
  * This aligns exactly with your backend validation rules
  */
 export class DynamicFormValidator {
@@ -35,11 +36,11 @@ export class DynamicFormValidator {
     static getFieldRequirements(
         type?: QuestionType,
         category?: QuestionCategory,
-        language?: Language
+        _language?: Language
     ): FieldRequirement[] {
         const requirements: FieldRequirement[] = [];
 
-        // ✅ UNIVERSAL: Basic fields required for all questions
+        // UNIVERSAL: Basic fields required for all questions
         requirements.push(
             { field: 'title', required: true, message: 'Question title is required' },
             { field: 'description', required: true, message: 'Question description is required' },
@@ -48,7 +49,7 @@ export class DynamicFormValidator {
             { field: 'difficulty', required: true, message: 'Difficulty level is required' }
         );
 
-        // ✅ CATEGORY: Required for code-related question types
+        // CATEGORY: Required for code-related question types
         if (type && ['codeChallenge', 'fillInTheBlank', 'codeDebugging'].includes(type)) {
             requirements.push({
                 field: 'category',
@@ -57,7 +58,7 @@ export class DynamicFormValidator {
             });
         }
 
-        // ✅ TYPE-SPECIFIC: Requirements based on question type
+        // TYPE-SPECIFIC: Requirements based on question type
         if (type) {
             requirements.push(...this.getTypeSpecificRequirements(type, category));
         }
@@ -121,7 +122,7 @@ export class DynamicFormValidator {
                 break;
 
             case 'codeChallenge':
-                // ✅ LOGIC CATEGORY: Special requirements for logic questions
+                // LOGIC CATEGORY: Special requirements for logic questions
                 if (category === 'logic') {
                     requirements.push(
                         {
@@ -162,7 +163,7 @@ export class DynamicFormValidator {
                     }
                 );
 
-                // ✅ LOGIC CATEGORY: Test cases required for debugging logic questions
+                // LOGIC CATEGORY: Test cases required for debugging logic questions
                 if (category === 'logic') {
                     requirements.push(
                         {
@@ -186,7 +187,33 @@ export class DynamicFormValidator {
     }
 
     /**
-     * ✅ VALIDATE: Complete validation of question data
+     * Get business rule error messages
+     */
+    private static getBusinessRuleError(type: QuestionType, category: QuestionCategory, language?: Language): string {
+        // If we have language, use comprehensive validation
+        if (language) {
+            const allowedTypes = getAllowedQuestionTypes(language, category);
+            return `'${type}' is not valid for ${language} ${category} questions. Valid types: ${allowedTypes.join(', ')}`;
+        }
+        
+        // Fallback to category-only validation
+        switch (category) {
+            case 'ui':
+                if (type === 'codeChallenge' || type === 'codeDebugging') {
+                    return 'UI questions cannot use Code Challenge or Code Debugging types. Use Fill-in-the-Blank for code-related UI questions.';
+                }
+                break;
+            case 'logic':
+                if (type === 'fillInTheBlank') {
+                    return 'Logic questions should use Code Challenge or Code Debugging types, not Fill-in-the-Blank.';
+                }
+                break;
+        }
+        return `Invalid question type '${type}' for category '${category}'`;
+    }
+
+    /**
+     * VALIDATE: Complete validation of question data
      */
     static validateQuestionData(data: Partial<CreateQuestionData>): ValidationResult {
         const errors: string[] = [];
@@ -197,21 +224,29 @@ export class DynamicFormValidator {
         // Get field requirements based on current data
         const requirements = this.getFieldRequirements(data.type, data.category, data.language);
 
-        // ✅ BUSINESS RULES: Check question type-category compatibility
+        // BUSINESS RULES: Check question type-category compatibility
         if (data.type && data.category) {
-            if (!isValidQuestionTypeForCategory(data.type, data.category)) {
-                errors.push(this.getBusinessRuleError(data.type, data.category));
+            // Use comprehensive validation if language is available
+            if (data.language) {
+                if (!isValidQuestionTypeForLanguageAndCategory(data.type, data.language, data.category)) {
+                    errors.push(this.getBusinessRuleError(data.type, data.category, data.language));
+                }
+            } else {
+                // Fallback to category-only validation
+                if (!isValidQuestionTypeForCategory(data.type, data.category)) {
+                    errors.push(this.getBusinessRuleError(data.type, data.category));
+                }
             }
         }
 
-        // ✅ LANGUAGE-CATEGORY: Check valid combinations
+        // LANGUAGE-CATEGORY: Check valid combinations
         if (data.language && data.category) {
             if (!isValidLanguageCategoryCombo(data.language, data.category)) {
                 errors.push(`Category '${data.category}' is not available for language '${data.language}'`);
             }
         }
 
-        // ✅ FIELD VALIDATION: Check each field requirement
+        // FIELD VALIDATION: Check each field requirement
         for (const requirement of requirements) {
             if (requirement.required) {
                 requiredFields.push(requirement.field);
@@ -233,7 +268,7 @@ export class DynamicFormValidator {
             }
         }
 
-        // ✅ SPECIFIC VALIDATIONS: Advanced validation rules
+        // SPECIFIC VALIDATIONS: Advanced validation rules
         this.addSpecificValidations(data, errors, warnings);
 
         return {
@@ -246,23 +281,6 @@ export class DynamicFormValidator {
     }
 
     /**
-     * Get business rule error messages
-     */
-    private static getBusinessRuleError(type: QuestionType, category: QuestionCategory): string {
-        switch (category) {
-            case 'ui':
-                if (type === 'codeChallenge' || type === 'codeDebugging') {
-                    return 'UI questions cannot use Code Challenge or Code Debugging types. Use Fill-in-the-Blank for code-related UI questions.';
-                }
-                break;
-            case 'syntax':
-                // No restrictions for syntax questions
-                break;
-        }
-        return `Invalid question type '${type}' for category '${category}'`;
-    }
-
-    /**
      * Add specific validation rules
      */
     private static addSpecificValidations(
@@ -271,7 +289,7 @@ export class DynamicFormValidator {
         warnings: string[]
     ): void {
 
-        // ✅ MULTIPLE CHOICE: Validate options and correct answer
+        // MULTIPLE CHOICE: Validate options and correct answer
         if (data.type === 'multipleChoice' && data.options && data.correctAnswer !== undefined) {
             if (typeof data.correctAnswer === 'number') {
                 if (data.correctAnswer < 0 || data.correctAnswer >= data.options.length) {
@@ -288,7 +306,7 @@ export class DynamicFormValidator {
             }
         }
 
-        // ✅ FILL-IN-THE-BLANK: Validate blanks structure
+        // FILL-IN-THE-BLANK: Validate blanks structure
         if (data.type === 'fillInTheBlank' && data.blanks && data.codeTemplate) {
             for (let i = 0; i < data.blanks.length; i++) {
                 const blank = data.blanks[i];
@@ -309,7 +327,7 @@ export class DynamicFormValidator {
             }
         }
 
-        // ✅ TEST CASES: Validate test case structure
+        // TEST CASES: Validate test case structure
         if (data.testCases && data.testCases.length > 0) {
             for (let i = 0; i < data.testCases.length; i++) {
                 const testCase = data.testCases[i];
@@ -324,7 +342,7 @@ export class DynamicFormValidator {
             }
         }
 
-        // ✅ CODE CONFIG: Validate configuration
+        // CODE CONFIG: Validate configuration
         if (data.codeConfig) {
             if (data.codeConfig.timeoutMs && data.codeConfig.timeoutMs < 100) {
                 warnings.push('Very low timeout may cause valid solutions to fail');
@@ -354,7 +372,7 @@ export class DynamicFormValidator {
     }
 
     /**
-     * ✅ STEP VALIDATION: Check if specific wizard step is complete
+     * STEP VALIDATION: Check if specific wizard step is complete
      */
     static validateStep(
         stepNumber: number,
@@ -367,46 +385,38 @@ export class DynamicFormValidator {
             case 1: // Language & Category Selection
                 if (!data.language) errors.push('Please select a programming language');
                 if (!data.category) errors.push('Please select a question category');
+                if (!data.type) errors.push('Please select a question type');
 
                 if (data.language && data.category) {
                     if (!isValidLanguageCategoryCombo(data.language, data.category)) {
                         errors.push(`Category '${data.category}' is not available for ${data.language}`);
                     }
                 }
-                break;
 
-            case 2: // Question Type Selection
-                if (!data.type) errors.push('Please select a question type');
-
-                // Only validate business rules for code-related questions that require categories
-                if (data.type && data.category && ['codeChallenge', 'fillInTheBlank', 'codeDebugging'].includes(data.type)) {
-                    if (!isValidQuestionTypeForCategory(data.type, data.category)) {
-                        errors.push(this.getBusinessRuleError(data.type, data.category));
+                // Use comprehensive validation if we have all three pieces
+                if (data.type && data.category && data.language) {
+                    if (!isValidQuestionTypeForLanguageAndCategory(data.type, data.language, data.category)) {
+                        errors.push(this.getBusinessRuleError(data.type, data.category, data.language));
                     }
                 }
                 break;
 
-            case 3: // Basic Information
+            case 2: // Basic Information
                 if (!data.title?.trim()) errors.push('Question title is required');
                 if (!data.description?.trim()) errors.push('Question description is required');
                 if (!data.difficulty) errors.push('Difficulty level is required');
                 break;
 
-            case 4: // Question Content
+            case 3: // Question Content
                 const contentValidation = this.validateQuestionData(data);
                 errors.push(...contentValidation.errors);
                 warnings.push(...contentValidation.warnings);
                 break;
 
-            case 5: // Test Cases (if applicable)
-                if (data.type === 'codeChallenge' && data.category === 'logic') {
-                    if (!data.testCases || data.testCases.length === 0) {
-                        errors.push('At least one test case is required for logic questions');
-                    }
-                    if (!data.codeConfig?.entryFunction) {
-                        errors.push('Entry function name is required for logic questions');
-                    }
-                }
+            case 4: // Review & Save
+                const fullValidation = this.validateQuestionData(data);
+                errors.push(...fullValidation.errors);
+                warnings.push(...fullValidation.warnings);
                 break;
         }
 
@@ -421,7 +431,7 @@ export class DynamicFormValidator {
 }
 
 /**
- * ✅ HOOK: React hook for dynamic form validation
+ * HOOK: React hook for dynamic form validation
  */
 export const useDynamicValidation = (data: Partial<CreateQuestionData>) => {
     const validation = DynamicFormValidator.validateQuestionData(data);
@@ -443,10 +453,8 @@ export const useDynamicValidation = (data: Partial<CreateQuestionData>) => {
 };
 
 /**
- * ✅ UTILITY: Get available question types for current configuration
+ * UTILITY: Get available question types for current configuration
  */
-// Fix getAvailableQuestionTypes in dynamicFormValidation.ts
-
 export const getAvailableQuestionTypes = (
     language?: Language,
     category?: QuestionCategory
@@ -455,49 +463,41 @@ export const getAvailableQuestionTypes = (
     const allTypes: QuestionType[] = ['multipleChoice', 'trueFalse', 'codeChallenge', 'fillInTheBlank', 'codeDebugging'];
 
     return allTypes.map(type => {
-        // Step 1: Check if language supports the category
+        // If we have both language and category, use the comprehensive validation
         if (language && category) {
-            if (!isValidLanguageCategoryCombo(language, category)) {
+            const isValid = isValidQuestionTypeForLanguageAndCategory(type, language, category);
+            
+            if (!isValid) {
+                // Get the allowed types to show what IS allowed
+                const allowedTypes = getAllowedQuestionTypes(language, category);
                 return {
                     type,
                     available: false,
-                    reason: `Language '${language}' does not support category '${category}'`
+                    reason: `${type} is not available for ${language} ${category} questions. Available types: ${allowedTypes.join(', ')}`
                 };
             }
         }
-
-        // Step 2: Check category-type restrictions
-        if (category) {
+        // If we only have category, use the legacy validation
+        else if (category) {
             const isValid = isValidQuestionTypeForCategory(type, category);
-
             if (!isValid) {
-                let reason: string;
-                switch (category) {
-                    case 'ui':
-                        if (type === 'codeChallenge' || type === 'codeDebugging') {
-                            reason = 'UI questions cannot use Code Challenge or Code Debugging types';
-                        } else {
-                            reason = 'Not suitable for UI questions';
-                        }
-                        break;
-                    case 'syntax':
-                        reason = 'Not suitable for syntax questions';
-                        break;
-                    default:
-                        reason = `Not suitable for ${category} questions`;
-                }
-                return { type, available: false, reason };
-            }
-        }
-
-        // Step 3: Check if code types are only for logic-capable languages
-        if ((type === 'codeChallenge' || type === 'codeDebugging') && language) {
-            const validCategories = getValidCategories(language);
-            if (!validCategories.includes('logic')) {
                 return {
                     type,
                     available: false,
-                    reason: `${language} does not support logic questions`
+                    reason: `${type} is not suitable for ${category} questions`
+                };
+            }
+        }
+        // If we only have language, check if it supports the question type at all
+        else if (language) {
+            const validCategories = getValidCategories(language);
+            
+            // Code types need logic support
+            if ((type === 'codeChallenge' || type === 'codeDebugging') && !validCategories.includes('logic')) {
+                return {
+                    type,
+                    available: false,
+                    reason: `${language} does not support logic questions (required for ${type})`
                 };
             }
         }

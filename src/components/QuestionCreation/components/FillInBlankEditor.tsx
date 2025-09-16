@@ -1,18 +1,24 @@
 // src/components/QuestionCreation/components/FillInBlankEditor.tsx - CONTEXT INTEGRATED
 
-import React, { useState, useEffect } from 'react';
-import { 
-  Card, CardBody, FormGroup, Label, Input, Button, Badge, Alert, 
-  Row, Col, UncontrolledTooltip 
+import { AlertTriangle, CheckCircle, Eye, EyeOff, HelpCircle, Info, Plus, Trash2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import {
+  Alert,
+  Badge,
+  Button,
+  Card, CardBody,
+  Col,
+  FormGroup,
+  Input,
+  Label,
+  Row,
+  UncontrolledTooltip
 } from 'reactstrap';
-import { Plus, Trash2, Eye, EyeOff, HelpCircle, AlertTriangle, CheckCircle, Info } from 'lucide-react';
 import type { CreateQuestionData } from '../../../types';
-import { 
-  validateFillInBlankStructure,
-  validateTemplateFormat,
-  cleanFillInBlankStructure,
+import {
   createProperBlankStructure,
-  ensureBlankIds
+  validateFillInBlankStructure,
+  validateTemplateFormat
 } from '../../../utils/fillInBlankValidation';
 
 // ✅ NEW: Enhanced props with context validation integration

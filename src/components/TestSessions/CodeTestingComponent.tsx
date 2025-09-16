@@ -53,15 +53,6 @@ const CodeTestingComponent: React.FC<CodeTestingComponentProps> = ({
     const [error, setError] = useState<string | null>(null);
     const [expandedTests, setExpandedTests] = useState<Set<number>>(new Set());
 
-    // ADDED: Reset state when question changes
-    useEffect(() => {
-        console.log('CodeTestingComponent: Question changed, resetting state');
-        setTestResult(null);
-        setError(null);
-        setExpandedTests(new Set());
-        setTesting(false);
-    }, [question.questionIndex, question.questionData.title]); // Reset when question index or title changes
-
     // ADDED: Reset when student code is cleared or question type changes
     useEffect(() => {
         if (!studentCode.trim()) {
@@ -98,15 +89,6 @@ const CodeTestingComponent: React.FC<CodeTestingComponentProps> = ({
             setTesting(true);
             setError(null);
 
-            console.log('Testing code with question data:', {
-                questionIndex: question.questionIndex,
-                type: question.questionData.type,
-                language: question.questionData.language,
-                category: question.questionData.category,
-                testCases: question.questionData.testCases.length,
-                codeConfig: question.questionData.codeConfig
-            });
-
             // Use the existing testQuestion API
             const result = await apiService.testQuestion({
                 questionData: {
@@ -118,8 +100,6 @@ const CodeTestingComponent: React.FC<CodeTestingComponentProps> = ({
                 },
                 testCode: studentCode
             });
-
-            console.log('Test result received:', result);
             setTestResult(result);
             
             // Auto-expand failed tests for debugging

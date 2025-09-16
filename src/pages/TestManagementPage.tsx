@@ -1,51 +1,48 @@
 // pages/TestManagementPage.tsx
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import apiService from '../services/ApiService';
 import {
-  Container,
-  Row,
-  Col,
+  AlertTriangle,
+  Archive,
+  BarChart3,
+  CheckCircle,
+  Clock,
+  Edit,
+  Eye,
+  FileText,
+  Filter,
+  Globe,
+  Play,
+  PlayCircle,
+  Plus,
+  Search,
+  Target,
+  Trash2,
+  Users
+} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  Alert,
+  Badge,
+  Button,
+  ButtonGroup,
   Card,
   CardBody,
-  CardTitle,
   CardText,
-  Button,
-  Badge,
-  Alert,
-  Spinner,
+  CardTitle,
+  Col,
+  Container,
   Input,
   InputGroup,
   InputGroupText,
-  ButtonGroup,
   Modal,
-  ModalHeader,
   ModalBody,
-  ModalFooter
+  ModalFooter,
+  ModalHeader,
+  Row,
+  Spinner
 } from 'reactstrap';
-import {
-  Plus,
-  Search,
-  Filter,
-  Edit,
-  Trash2,
-  Eye,
-  Play,
-  Pause,
-  Archive,
-  Users,
-  Clock,
-  Target,
-  BarChart3,
-  CheckCircle,
-  AlertTriangle,
-  Globe,
-  Building,
-  FileText,
-  Settings,
-  PlayCircle
-} from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import apiService from '../services/ApiService';
 import type { Test, TestStatus } from '../types';
 
 const TestManagementPage: React.FC = () => {
@@ -58,10 +55,9 @@ const TestManagementPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [typeFilter, setTypeFilter] = useState<string>('all');
   const [isGlobalFilter, setIsGlobalFilter] = useState<string>('all');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  console.log(tests)
+
   // Delete modal state
   const [deleteModal, setDeleteModal] = useState(false);
   const [testToDelete, setTestToDelete] = useState<{ id: string; title: string } | null>(null);
@@ -83,7 +79,7 @@ const TestManagementPage: React.FC = () => {
 
   useEffect(() => {
     fetchTests();
-  }, [statusFilter, typeFilter, isGlobalFilter]);
+  }, [statusFilter, isGlobalFilter]);
 
   const fetchTests = async () => {
     if (!user) return;
@@ -104,8 +100,6 @@ const TestManagementPage: React.FC = () => {
       if (isGlobalFilter !== 'all') {
         params.isGlobal = isGlobalFilter === 'true';
       }
-
-      console.log('TestManagementPage: Fetching tests with params:', params);
 
       // FIXED: getAllTests returns Test[] directly, no wrapper
       const tests = await apiService.getAllTests(params);

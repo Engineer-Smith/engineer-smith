@@ -20,7 +20,7 @@ import {
 } from 'reactstrap';
 import { useAuth } from '../context/AuthContext';
 import apiService from '../services/ApiService';
-import type { Result, TestType } from '../types';
+import type { PopulatedResult } from '../types';
 
 interface ResultsStats {
   totalAttempts: number;
@@ -32,9 +32,9 @@ interface ResultsStats {
 interface TestGroup {
   testId: string;
   testTitle: string;
-  results: Result[];
+  results: PopulatedResult[];
   bestScore: number;
-  bestAttempt: Result;
+  bestAttempt: PopulatedResult;
   totalAttempts: number;
   passedAttempts: number;
 }
@@ -42,9 +42,8 @@ interface TestGroup {
 const TestResultsPage: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [results, setResults] = useState<Result[]>([]);
+  const [results, setResults] = useState<PopulatedResult[]>([]);
   const [testGroups, setTestGroups] = useState<TestGroup[]>([]);
-  const [tests, setTests] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -67,7 +66,7 @@ const TestResultsPage: React.FC = () => {
 
   useEffect(() => {
     groupResultsByTest();
-  }, [results, tests, searchTerm, statusFilter]);
+  }, [results, searchTerm, statusFilter]);
 
   const fetchResults = async () => {
     if (isRequestInProgress.current) return;
@@ -77,40 +76,24 @@ const TestResultsPage: React.FC = () => {
     setError(null);
 
     try {
-      // FIXED: API service returns Result[] directly, no wrapper
+      // Backend returns populated results directly - filter by current user
       const fetchedResults = await apiService.getAllResults({ 
         userId: user?._id,
         sort: '-createdAt'
-      });
+      }) as PopulatedResult[];
 
-      // FIXED: Handle direct array response
+      // Validate that we got an array
       if (!Array.isArray(fetchedResults)) {
         throw new Error('Invalid results format received');
       }
 
-      setResults(fetchedResults);
-      calculateStats(fetchedResults);
+      // Filter to only show current user's results (extra safety)
+      const userResults = fetchedResults.filter(result => 
+        result.userId._id === user?._id
+      );
 
-      // Fetch test details for each unique test
-      const uniqueTestIds = [...new Set(fetchedResults.map(r => r.testId))];
-      const testPromises = uniqueTestIds.map(async (testId) => {
-        try {
-          // FIXED: getTest returns Test directly, no .data wrapper
-          const test = await apiService.getTest(testId);
-          return { testId, test };
-        } catch (err) {
-          // Fallback for failed test fetches
-          return { testId, test: { title: `Test ${testId.slice(-6)}`, description: '' } };
-        }
-      });
-
-      const testResults = await Promise.all(testPromises);
-      const testsMap = testResults.reduce((acc, { testId, test }) => {
-        acc[testId] = test;
-        return acc;
-      }, {} as Record<string, any>);
-
-      setTests(testsMap);
+      setResults(userResults);
+      calculateStats(userResults);
 
     } catch (err) {
       console.error('Results fetch error:', err);
@@ -121,7 +104,7 @@ const TestResultsPage: React.FC = () => {
     }
   };
 
-  const calculateStats = (results: Result[]) => {
+  const calculateStats = (results: PopulatedResult[]) => {
     if (results.length === 0) {
       setStats({
         totalAttempts: 0,
@@ -145,14 +128,15 @@ const TestResultsPage: React.FC = () => {
   };
 
   const groupResultsByTest = () => {
-    // Group results by testId
+    // Group results by testId (using populated object ID)
     const groupedResults = results.reduce((acc, result) => {
-      if (!acc[result.testId]) {
-        acc[result.testId] = [];
+      const testId = result.testId._id;
+      if (!acc[testId]) {
+        acc[testId] = [];
       }
-      acc[result.testId].push(result);
+      acc[testId].push(result);
       return acc;
-    }, {} as Record<string, Result[]>);
+    }, {} as Record<string, PopulatedResult[]>);
 
     // Create test groups with metadata
     const groups: TestGroup[] = Object.entries(groupedResults).map(([testId, testResults]) => {
@@ -166,7 +150,7 @@ const TestResultsPage: React.FC = () => {
 
       return {
         testId,
-        testTitle: tests[testId]?.title || `Test ${testId.slice(-6)}`,
+        testTitle: testResults[0].testId.title || `Test ${testId.slice(-6)}`,
         results: testResults.sort((a, b) => b.attemptNumber - a.attemptNumber), // Latest first
         bestScore: Math.round(bestScore),
         bestAttempt,
@@ -234,14 +218,14 @@ const TestResultsPage: React.FC = () => {
     return colors[status] || 'secondary';
   };
 
-  const getStatusText = (result: Result): string => {
+  const getStatusText = (result: PopulatedResult): string => {
     if (result.status === 'completed') {
       return result.score.passed ? 'Passed' : 'Failed';
     }
     return result.status.charAt(0).toUpperCase() + result.status.slice(1);
   };
 
-  const formatScore = (result: Result): string => {
+  const formatScore = (result: PopulatedResult): string => {
     const percentage = ((result.score.earnedPoints / result.score.totalPoints) * 100).toFixed(1);
     return `${result.score.earnedPoints}/${result.score.totalPoints} (${percentage}%)`;
   };

@@ -1,4 +1,4 @@
-// src/hooks/useTags.ts - Simple tags hook using existing ApiService
+// PART 2: Fixed useTags hook (complete replacement for useTags.ts)
 
 import { useState, useEffect } from 'react';
 import apiService from '../services/ApiService';
@@ -25,7 +25,7 @@ export interface UseTagsResult {
 }
 
 /**
- * ✅ Simple tags hook - uses ApiService directly
+ * Simple tags hook - uses ApiService directly
  */
 export const useTags = (options: UseTagsOptions = {}): UseTagsResult => {
   const { languages, autoFetch = true } = options;
@@ -47,6 +47,7 @@ export const useTags = (options: UseTagsOptions = {}): UseTagsResult => {
         throw new Error(response.message || 'Failed to fetch tags');
       }
 
+      // Access the data property from API response
       const data = response.data;
 
       // Add null check for data

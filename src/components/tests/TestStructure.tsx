@@ -1,47 +1,47 @@
-import React, { useState, useEffect } from 'react';
 import {
-  Row,
-  Col,
+  AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
+  BookOpen,
+  CheckCircle,
+  Clock,
+  Eye,
+  FileText,
+  HelpCircle,
+  Info,
+  Layers,
+  RotateCcw,
+  Settings,
+  Shield,
+  Target,
+  Timer,
+  TrendingUp,
+  Users,
+  Zap
+} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import {
+  Alert,
+  Badge,
+  Button,
   Card,
   CardBody,
   CardTitle,
-  FormGroup,
-  Label,
-  Input,
-  Button,
-  Alert,
-  Badge,
+  Col,
   Collapse,
+  FormGroup,
+  Input,
   InputGroup,
   InputGroupText,
+  Label,
+  Row,
   Spinner
 } from 'reactstrap';
-import {
-  ArrowRight,
-  ArrowLeft,
-  Clock,
-  Users,
-  RotateCcw,
-  Eye,
-  CheckCircle,
-  Layers,
-  FileText,
-  Timer,
-  Settings,
-  AlertTriangle,
-  Info,
-  Zap,
-  Target,
-  BookOpen,
-  TrendingUp,
-  Shield,
-  HelpCircle
-} from 'lucide-react';
 
 // Import types and services
-import type { WizardStepProps } from '../../types/createTest';
-import type { TestType, Language, Tags } from '../../types';
 import apiService from '../../services/ApiService';
+import type { TestType } from '../../types';
+import type { WizardStepProps } from '../../types/createTest';
 
 // Interfaces for component state
 interface DifficultyDistribution {
@@ -288,12 +288,12 @@ const TestStructure: React.FC<WizardStepProps> = ({
     }
 
     if (!testData.settings?.timeLimit || testData.settings.timeLimit <= 0) {
-      setError('Time limit must be greater than 0');
+      setError('Time limit is required and must be greater than 0');
       return false;
     }
 
     if (!testData.settings?.attemptsAllowed || testData.settings.attemptsAllowed <= 0) {
-      setError('Attempts allowed must be greater than 0');
+      setError('Number of attempts is required and must be greater than 0');
       return false;
     }
 
@@ -314,6 +314,13 @@ const TestStructure: React.FC<WizardStepProps> = ({
 
     setError(null);
     return true;
+  };
+
+  // Add helper function for button disabled state
+  const isStepValid = (): boolean => {
+    return !!(testData.settings?.useSections !== undefined &&
+      testData.settings?.timeLimit > 0 &&
+      testData.settings?.attemptsAllowed > 0);
   };
 
   const handleNext = (): void => {
@@ -573,11 +580,12 @@ const TestStructure: React.FC<WizardStepProps> = ({
                       <Input
                         type="number"
                         id="timeLimit"
-                        min="5"
+                        min="1"
                         max="480"
-                        value={testData.settings?.timeLimit || ''}
+                        value={testData.settings?.timeLimit === 0 ? '' : testData.settings?.timeLimit || ''}
                         onChange={(e) => handleSettingChange('timeLimit', parseInt(e.target.value) || 0)}
-                        placeholder="Enter time in minutes"
+                        placeholder="Enter time in minutes (required)"
+                        className={testData.settings?.timeLimit === 0 ? 'border-warning' : ''}
                       />
                       <InputGroupText>
                         <Clock size={14} />
@@ -590,13 +598,19 @@ const TestStructure: React.FC<WizardStepProps> = ({
                           : 'Total time students have to complete the entire test'
                         }
                       </small>
-                      {timeSuggestion && (
+                      {testData.settings?.timeLimit > 0 && timeSuggestion && (
                         <Badge color={timeSuggestion.type} size="sm">
                           {timeSuggestion.message}
                         </Badge>
                       )}
                     </div>
-                    {estimatedDuration > 0 && (
+                    {testData.settings?.timeLimit === 0 && (
+                      <small className="text-warning">
+                        <AlertTriangle size={12} className="me-1" />
+                        Time limit is required
+                      </small>
+                    )}
+                    {estimatedDuration > 0 && testData.settings?.timeLimit > 0 && (
                       <small className="text-info">
                         <Info size={12} className="me-1" />
                         Estimated duration: {estimatedDuration} minutes
@@ -618,17 +632,28 @@ const TestStructure: React.FC<WizardStepProps> = ({
                         id="attemptsAllowed"
                         min="1"
                         max="10"
-                        value={testData.settings?.attemptsAllowed || ''}
+                        value={testData.settings?.attemptsAllowed === 0 ? '' : testData.settings?.attemptsAllowed || ''}
                         onChange={(e) => handleSettingChange('attemptsAllowed', parseInt(e.target.value) || 0)}
-                        placeholder="How many attempts?"
+                        placeholder="Number of attempts (required)"
+                        className={testData.settings?.attemptsAllowed === 0 ? 'border-warning' : ''}
                       />
                       <InputGroupText>
                         <Users size={14} />
                       </InputGroupText>
                     </InputGroup>
-                    <small className="text-muted">
-                      How many times students can take this test (1-10)
-                    </small>
+                    <div className="mt-1">
+                      <small className="text-muted">
+                        How many times students can take this test (1-10)
+                      </small>
+                      {testData.settings?.attemptsAllowed === 0 && (
+                        <div>
+                          <small className="text-warning">
+                            <AlertTriangle size={12} className="me-1" />
+                            Number of attempts is required
+                          </small>
+                        </div>
+                      )}
+                    </div>
                   </FormGroup>
                 </Col>
               </Row>
@@ -1040,7 +1065,7 @@ const TestStructure: React.FC<WizardStepProps> = ({
           color="primary"
           onClick={handleNext}
           className="d-flex align-items-center"
-          disabled={testData.settings?.useSections === undefined}
+          disabled={!isStepValid()}
         >
           Next: {testData.settings?.useSections ? 'Configure Sections' : 'Add Questions'}
           <ArrowRight size={16} className="ms-1" />

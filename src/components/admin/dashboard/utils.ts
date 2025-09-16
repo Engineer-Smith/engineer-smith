@@ -149,6 +149,7 @@ export const calculateStats = (
   const globalQuestions = questions.filter((q: any) => q.isGlobal).length;
   const orgSpecificQuestions = questions.filter((q: any) => !q.isGlobal).length;
   const activeSessions = sessions.filter((s: any) => s.status === 'inProgress').length;
+  const completedSessions = sessions.filter((s: any) => s.status === 'completed').length; // FIX: Added this line
   const activeTests = tests.filter((t: any) => t.status === 'active').length;
 
   // Get organizations count if super admin
@@ -167,6 +168,7 @@ export const calculateStats = (
     activeTests,
     totalTests: tests.length,
     activeSessions,
-    organizationsCount
+    completedSessions, // FIX: Added this line
+    organizationsCount,
   };
 };

@@ -1,4 +1,4 @@
-// src/hooks/questionCreation/useDuplicateChecker.ts - Fixed with proper type assertion
+// src/hooks/questionCreation/useDuplicateChecker.ts - FIXED to handle direct API responses
 import { useCallback } from 'react';
 import type { QuestionCreationState, QuestionCreationAction, DuplicateQuestion } from './types';
 import { createDuplicateCheckHash } from './utils';
@@ -25,16 +25,8 @@ export const useDuplicateChecker = (
     // Check if we need to perform duplicate check
     const checkHash = createDuplicateCheckHash(questionData);
     if (!forceCheck && state.lastDuplicateCheck === checkHash) {
-      console.log('Skipping duplicate check - already checked this combination');
       return;
     }
-
-    console.log('Starting duplicate check...', {
-      title: questionData.title,
-      type: questionData.type,
-      language: questionData.language,
-      forceCheck
-    });
 
     dispatch({ type: 'START_DUPLICATE_CHECK' });
 
@@ -49,59 +41,46 @@ export const useDuplicateChecker = (
         codeTemplate: questionData.codeTemplate
       };
 
-      console.log('API call params:', searchParams);
 
+      // API now returns data directly
       const response = await ApiService.checkDuplicates(searchParams);
 
-      console.log('API response:', response);
 
-      if (response.error) {
-        console.error('Duplicate check API error:', response);
-        dispatch({ type: 'SET_ERROR', payload: response.message || 'Failed to check for duplicates' });
-        dispatch({ type: 'SET_DUPLICATES', payload: { duplicates: [], checkHash } });
-        return;
-      }
+      // Response is now the direct data, not wrapped
+      const rawDuplicates = response.duplicates || [];
+      
+      // Convert the API response to match our frontend DuplicateQuestion type
+      const duplicates: DuplicateQuestion[] = rawDuplicates.map(duplicate => ({
+        ...duplicate,
+        // Ensure type is properly typed as QuestionType
+        type: duplicate.type as QuestionType,
+        // Handle organizationId - provide fallback for undefined
+        organizationId: duplicate.organizationId || '',
+        // Ensure other required fields are properly typed
+        _id: duplicate._id,
+        title: duplicate.title,
+        description: duplicate.description,
+        language: duplicate.language,
+        category: duplicate.category,
+        difficulty: duplicate.difficulty,
+        isGlobal: duplicate.isGlobal,
+        createdBy: duplicate.createdBy,
+        createdAt: duplicate.createdAt,
+        similarity: duplicate.similarity,
+        exactMatch: duplicate.exactMatch,
+        source: duplicate.source,
+        matchReason: duplicate.matchReason
+      }));
 
-      if (response.data) {
-        // Type assertion to convert API response to expected frontend types
-        const rawDuplicates = response.data.duplicates || [];
-        
-        // Convert the API response to match our frontend DuplicateQuestion type
-        const duplicates: DuplicateQuestion[] = rawDuplicates.map(duplicate => ({
-          ...duplicate,
-          // Ensure type is properly typed as QuestionType
-          type: duplicate.type as QuestionType,
-          // Handle organizationId - provide fallback for undefined
-          organizationId: duplicate.organizationId || '',
-          // Ensure other required fields are properly typed
-          _id: duplicate._id,
-          title: duplicate.title,
-          description: duplicate.description,
-          language: duplicate.language,
-          category: duplicate.category,
-          difficulty: duplicate.difficulty,
-          isGlobal: duplicate.isGlobal,
-          createdBy: duplicate.createdBy,
-          createdAt: duplicate.createdAt,
-          similarity: duplicate.similarity,
-          exactMatch: duplicate.exactMatch,
-          source: duplicate.source,
-          matchReason: duplicate.matchReason
-        }));
+      dispatch({
+        type: 'SET_DUPLICATES',
+        payload: {
+          duplicates,
+          checkHash
+        }
+      });
 
-        dispatch({
-          type: 'SET_DUPLICATES',
-          payload: {
-            duplicates,
-            checkHash
-          }
-        });
 
-        console.log(`Duplicate check completed: ${duplicates.length} potential duplicates found`);
-      } else {
-        console.log('No duplicates found');
-        dispatch({ type: 'SET_DUPLICATES', payload: { duplicates: [], checkHash } });
-      }
     } catch (error) {
       console.error('Duplicate check failed:', error);
       dispatch({ type: 'SET_ERROR', payload: 'Failed to check for duplicates' });

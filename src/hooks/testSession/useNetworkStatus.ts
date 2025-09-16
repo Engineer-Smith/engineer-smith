@@ -27,7 +27,6 @@ export const useNetworkStatus = () => {
 
   useEffect(() => {
     const handleOnline = () => {
-      console.log('Network: Back online');
       const now = new Date();
       
       setIsOnline(true);
@@ -38,13 +37,11 @@ export const useNetworkStatus = () => {
       // Calculate how long we were offline
       if (lastOfflineAt) {
         const duration = Math.floor((now.getTime() - lastOfflineAt.getTime()) / 1000);
-        console.log(`Network: Was offline for ${duration} seconds`);
         setOfflineDuration(duration);
       }
     };
 
     const handleOffline = () => {
-      console.log('Network: Gone offline');
       const now = new Date();
       
       setIsOnline(false);
@@ -107,12 +104,10 @@ export const useSimpleNetworkStatus = () => {
 
   useEffect(() => {
     const handleOnline = () => {
-      console.log('Network: Back online');
       setIsOnline(true);
     };
 
     const handleOffline = () => {
-      console.log('Network: Gone offline');
       setIsOnline(false);
     };
 

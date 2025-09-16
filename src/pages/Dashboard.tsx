@@ -1,568 +1,563 @@
-// Dashboard.tsx - Updated with consolidated RecentActivity component
-import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
-  Container,
-  Row,
-  Col,
+  AlertCircle,
+  Award,
+  BarChart3,
+  BookOpen,
+  Calendar,
+  CheckCircle,
+  Clock,
+  Play,
+  RotateCcw,
+  Target,
+  User
+} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import {
   Alert,
-  Spinner,
+  Badge,
   Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Col,
+  Container,
+  Input,
   Modal,
-  ModalHeader,
   ModalBody,
   ModalFooter,
-  Badge
+  ModalHeader,
+  Progress,
+  Row,
+  Spinner
 } from 'reactstrap';
 import { useAuth } from '../context/AuthContext';
-import { useSocketConnection, useSocketSession } from '../context/SocketContext';
-import { useTestSession } from '../context/TestSessionContext';
-import apiService from '../services/ApiService';
-import type { Test, TestSession, Result } from '../types';
+import { useNotifications } from '../context/NotificationContext';
+import ApiService from '../services/ApiService';
 
-// Import the separated components
-import { DashboardHeader } from '../components/Dashboard/DashboardHeader';
-import { StatsCards } from '../components/Dashboard/StatsCards';
-import { AvailableTests } from '../components/Dashboard/AvailableTests';
-import { RecentActivity } from '../components/Dashboard/RecentActivity'; // UPDATED: Single consolidated component
+// [Types remain the same...]
+interface StudentDashboardStats {
+  testsAvailable: number;
+  testsCompleted: number;
+  averageScore: number;
+  passedTests: number;
+  totalTimeSpent: number;
+}
 
-const Dashboard: React.FC = () => {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
+interface TestAttempts {
+  total: number;
+  used: number;
+  remaining: number;
+}
 
-  // Socket and session contexts
-  const { isConnected, connectionMessage, networkStatus } = useSocketConnection();
-  const { currentSessionId } = useSocketSession();
-  const {
-    state: sessionState,
-    checkExistingSession,
-    rejoinSession,
-    timerDisplay,
-    networkStatus: sessionNetworkStatus,
-    connectionStatus: sessionConnectionStatus
-  } = useTestSession();
+interface StudentTest {
+  _id: string;
+  title: string;
+  description: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  timeLimit: number;
+  passingScore: number;
+  questionCount: number;
+  attempts: TestAttempts;
+  canTakeTest: boolean;
+  hasOverride: boolean;
+}
 
-  // Dashboard data state
-  const [availableTests, setAvailableTests] = useState<Test[]>([]);
-  const [recentSessions, setRecentSessions] = useState<TestSession[]>([]);
-  const [myResults, setMyResults] = useState<Result[]>([]);
-  const [loading, setLoading] = useState(true);
+interface StudentActivity {
+  id: string;
+  testTitle: string;
+  status: 'completed' | 'in_progress' | 'abandoned';
+  score?: number;
+  timestamp: string;
+}
+
+interface StudentDashboard {
+  stats: StudentDashboardStats;
+  tests: StudentTest[];
+  recentActivity: StudentActivity[];
+  requests: any[];
+  overrides: any[];
+}
+
+interface ActivityItem {
+  id: string;
+  title: string;
+  description: string;
+  timestamp: string;
+  status: 'completed' | 'failed' | 'in_progress';
+  score?: number;
+  icon: React.ReactNode;
+}
+
+export default function ModernStudentDashboard() {
+  
+  const { user } = useAuth();
+  
+  // ADD DEBUG LOGGING for notifications
+  const notificationContext = useNotifications();
+  const { submitAttemptRequest } = notificationContext;
+
+  // State management
+  const [dashboardData, setDashboardData] = useState<StudentDashboard | null>(null);
+  const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [stats, setStats] = useState({
-    totalTests: 0,
-    completedTests: 0,
-    passedTests: 0,
-    averageScore: 0
+  
+  // Request attempts modal
+  const [showRequestModal, setShowRequestModal] = useState(false);
+  const [selectedTest, setSelectedTest] = useState<StudentTest | null>(null);
+  const [requestForm, setRequestForm] = useState({
+    attempts: 1,
+    reason: ''
   });
 
-  // Session detection and modal state
-  const [showActiveSessionModal, setShowActiveSessionModal] = useState(false);
-  const [showRejoinModal, setShowRejoinModal] = useState(false);
-  const [pendingTestId, setPendingTestId] = useState<string | null>(null);
-  const [sessionCheckResult, setSessionCheckResult] = useState<any>(null);
-
-  // Request tracking to prevent duplicate calls
-  const isRequestInProgress = useRef(false);
-  const hasDataLoaded = useRef(false);
-
-  // Load dashboard data on mount
   useEffect(() => {
-    if (!hasDataLoaded.current && !isRequestInProgress.current) {
-      fetchDashboardData();
-    }
+    loadDashboardData();
   }, []);
 
-  // Check for existing sessions periodically
-  useEffect(() => {
-    checkForExistingSessionOnServer();
-
-    // Check every 30 seconds for session changes
-    const intervalId = setInterval(() => {
-      if (!showRejoinModal && !showActiveSessionModal) {
-        checkForExistingSessionOnServer();
-      }
-    }, 30000);
-
-    return () => clearInterval(intervalId);
-  }, []);
-
-  // Fetch all dashboard data
-  const fetchDashboardData = async () => {
-    if (isRequestInProgress.current) return;
-
-    isRequestInProgress.current = true;
-    setLoading(true);
-    setError(null);
-
+  const loadDashboardData = async () => {
     try {
-      // Fetch available tests
-      const tests = await apiService.getAllTests({ status: 'active' });
-      if (!Array.isArray(tests)) {
-        throw new Error('Failed to fetch tests');
-      }
-
-      // Fetch recent sessions
-      const sessions = await apiService.getAllTestSessions({
-        userId: user?._id,
-        limit: 10
-      });
-      if (!Array.isArray(sessions)) {
-        throw new Error('Failed to fetch sessions');
-      }
-
-      // Fetch results
-      const results = await apiService.getAllResults({
-        userId: user?._id,
-        limit: 10
-      });
-      if (!Array.isArray(results)) {
-        throw new Error('Failed to fetch results');
-      }
-
-      // Update state
-      setAvailableTests(tests);
-      setRecentSessions(sessions);
-      setMyResults(results);
-
-      // Calculate stats from sessions instead of results for better accuracy
-      const completedSessions = sessions.filter((s: TestSession) => s.status === 'completed');
-      const passedSessions = completedSessions.filter((s: TestSession) => s.finalScore?.passed);
-      const avgScore = completedSessions.length > 0
-        ? completedSessions.reduce((sum: number, s: TestSession) => sum + (s.finalScore?.percentage || 0), 0) / completedSessions.length
-        : 0;
-
-      setStats({
-        totalTests: tests.length,
-        completedTests: completedSessions.length,
-        passedTests: passedSessions.length,
-        averageScore: Math.round(avgScore * 10) / 10 // Round to 1 decimal
-      });
-
-      hasDataLoaded.current = true;
+      setIsLoading(true);
+      
+      // Use the new student dashboard API endpoint
+      const data = await ApiService.getStudentDashboard();
+      setDashboardData(data);
+      
+      // Convert activity to display format
+      const activity: ActivityItem[] = data.recentActivity.map(item => ({
+        id: item.id,
+        title: item.testTitle,
+        description: item.status === 'completed' ? 
+          `Completed with ${item.score ? Math.round(item.score) : 0}%` : 
+          item.status === 'in_progress' ? 'In Progress' : 'Abandoned',
+        timestamp: item.timestamp,
+        status: item.status as ActivityItem['status'],
+        score: item.score,
+        icon: item.status === 'completed' ? 
+          <CheckCircle size={16} /> : 
+          item.status === 'in_progress' ? 
+          <BookOpen size={16} /> : 
+          <AlertCircle size={16} />
+      }));
+      
+      setRecentActivity(activity);
 
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
+      console.error('🏠 StudentDashboard: Error loading dashboard data:', err);
+      setError('Failed to load dashboard data');
     } finally {
-      setLoading(false);
-      isRequestInProgress.current = false;
+      setIsLoading(false);
     }
   };
 
-  // Check server for existing sessions
-  const checkForExistingSessionOnServer = async () => {
-    try {
-      console.log('Checking server for existing session...');
-      const result = await checkExistingSession();
-      console.log('Session check result:', result);
-
-      if (result.success && result.canRejoin && result.sessionId) {
-        console.log('Found rejoinable session');
-        setSessionCheckResult(result);
-
-        // Only show modal if not already showing one
-        if (!showRejoinModal && !showActiveSessionModal) {
-          setShowRejoinModal(true);
-        }
-      } else {
-        // Clear stale results
-        if (sessionCheckResult && !result.canRejoin) {
-          setSessionCheckResult(null);
-        }
-
-        if (result.recentlyCompleted || result.wasExpired) {
-          refreshDashboard();
-        }
-      }
-
-    } catch (error) {
-      console.log('Session check failed:', error);
+  const handleRequestAttempts = async () => {
+    
+    if (!selectedTest || !requestForm.reason.trim()) {
+      alert('Please provide a reason for the request');
+      return;
     }
-  };
-
-  // Refresh dashboard data
-  const refreshDashboard = () => {
-    hasDataLoaded.current = false;
-    fetchDashboardData();
-  };
-
-  // Format time display with fallback handling
-  const formatTimeDisplay = (timeRemaining: number, isValid: boolean = true): string => {
-    if (!isValid && timeRemaining === 0) {
-      return 'Syncing...';
-    }
-
-    const hours = Math.floor(timeRemaining / 3600);
-    const minutes = Math.floor((timeRemaining % 3600) / 60);
-    const seconds = timeRemaining % 60;
-
-    if (hours > 0) {
-      return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    }
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  };
-
-  // Get comprehensive session status
-  const getSessionStatus = () => {
-    const hasValidTimer = timerDisplay.isActive && timerDisplay.timeRemaining > 0;
-    const fallbackTime = sessionCheckResult?.timeRemaining || 0; // REMOVED: sessionState.timeRemaining
-
-    return {
-      // Status indicators
-      isCompleted: sessionState.isCompleted,
-      isPaused: timerDisplay.isPaused || !networkStatus.isOnline,
-      isConnected: sessionConnectionStatus.isConnected,
-
-      // Timer data - use timerDisplay directly
-      timeRemaining: hasValidTimer ? timerDisplay.timeRemaining : fallbackTime,
-      hasValidTimer,
-      isTimerSynced: hasValidTimer || !sessionState.sessionId,
-
-      // Session data (prefer context, fallback to server result)
-      sessionId: sessionState.sessionId || sessionCheckResult?.sessionId,
-      sessionInfo: sessionState.sessionInfo || sessionCheckResult?.testInfo,
-      questionIndex: sessionState.questionState?.questionIndex ?? sessionCheckResult?.testInfo?.currentQuestionIndex ?? 0,
-
-      // Computed status
-      status: sessionState.isCompleted ? 'completed' :
-        (timerDisplay.isPaused || !networkStatus.isOnline) ? 'paused' : 'inProgress'
-    };
-  };
-  // Check if we should show the active session banner
-  const shouldShowSessionBanner = () => {
-    const contextHasActiveSession = sessionState.sessionId && sessionState.initialized && !sessionState.isCompleted;
-    const serverHasActiveSession = sessionCheckResult?.canRejoin && sessionCheckResult?.sessionId;
-
-    return contextHasActiveSession || serverHasActiveSession;
-  };
-
-  // Handle starting a new test
-  const handleStartTest = async (testId: string) => {
-    try {
-      const existingCheck = await checkExistingSession();
-      if (existingCheck.canRejoin) {
-        setPendingTestId(testId);
-        setSessionCheckResult(existingCheck);
-        setShowActiveSessionModal(true);
-        return;
-      }
-    } catch (error) {
-      // No existing session, proceed normally
-    }
-
-    navigate(`/test-details/${testId}`);
-  };
-
-  // Handle resuming a session
-  const handleResumeSession = async () => {
-    if (!sessionCheckResult?.sessionId) return;
 
     try {
-      setLoading(true);
-      await rejoinSession(sessionCheckResult.sessionId);
-
-      setShowRejoinModal(false);
-      setShowActiveSessionModal(false);
-      navigate(`/test-session/${sessionCheckResult.sessionId}`);
-
-    } catch (error) {
-      setError('Failed to rejoin session. Please try again.');
-      setLoading(false);
-    }
-  };
-
-  // Handle abandoning current session and starting new
-  const handleAbandonAndStartNew = async () => {
-    if (!sessionCheckResult?.sessionId || !pendingTestId) return;
-
-    try {
-      setLoading(true);
-
-      const response = await apiService.startTestSession({
-        testId: pendingTestId,
-        forceNew: true
+      await submitAttemptRequest({
+        testId: selectedTest._id,
+        requestedAttempts: requestForm.attempts,
+        reason: requestForm.reason
       });
-
-      if (!response.success) {
-        throw new Error(response.message || 'Failed to start new session');
-      }
-
-      setShowActiveSessionModal(false);
-      setSessionCheckResult(null);
-      setPendingTestId(null);
-
-      await refreshDashboard();
-      navigate(`/test-session/${response.session?.sessionId}`);
-
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start new session');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Handle logout
-  const handleLogout = async () => {
-    try {
-      await logout();
+      
+      setShowRequestModal(false);
+      setRequestForm({ attempts: 1, reason: '' });
+      setSelectedTest(null);
+      alert('Request submitted successfully');
+      
+      // Reload dashboard to reflect any changes
+      await loadDashboardData();
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error('🏠 StudentDashboard: Failed to submit request:', error);
+      alert('Failed to submit request');
     }
   };
 
-  // Loading state
-  if (loading) {
+  const navigateToPath = (path: string) => {
+    window.location.href = path;
+  };
+
+  if (isLoading) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#f8f9fa', paddingTop: '80px' }}>
-        <Container className="d-flex justify-content-center align-items-center" style={{ minHeight: '60vh' }}>
-          <div className="text-center">
-            <Spinner color="primary" size="lg" />
-            <p className="mt-3 text-muted">Loading your dashboard...</p>
-          </div>
-        </Container>
-      </div>
+      <Container className="py-5">
+        <Row className="justify-content-center">
+          <Col md={6} className="text-center">
+            <Spinner color="primary" className="mb-3" />
+            <p className="text-muted">Loading your dashboard...</p>
+          </Col>
+        </Row>
+      </Container>
     );
   }
 
-  const sessionStatus = getSessionStatus();
+  if (!dashboardData) {
+    return (
+      <Container className="py-5">
+        <Row className="justify-content-center">
+          <Col md={6} className="text-center">
+            <Alert color="warning">No dashboard data available</Alert>
+          </Col>
+        </Row>
+      </Container>
+    );
+  }
+
+  const { stats, tests } = dashboardData;
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f8f9fa', paddingTop: '80px' }}>
-      <Container>
-        <Row>
-          <Col lg={12}>
-            <DashboardHeader user={user} onLogout={handleLogout} />
+    <Container fluid className="py-4" style={{ maxWidth: '1200px' }}>
+      {/* Header Section */}
+      <Row className="mb-5">
+        <Col>
+          <div className="text-center">
+            <h1 className="display-5 mb-2">Welcome back, {user?.firstName || 'Student'}!</h1>
+            <p className="lead text-muted">Ready to continue your learning journey?</p>
+          </div>
+        </Col>
+      </Row>
 
-            {/* Connection Status Alert */}
-            {connectionMessage && (
-              <Alert color={connectionMessage.type} className="mb-4">
-                <i className={`fas fa-${connectionMessage.icon} me-2`}></i>
-                {connectionMessage.message}
-                {!isConnected && (
-                  <Button size="sm" color={connectionMessage.type} className="ms-2" onClick={() => window.location.reload()}>
-                    Refresh Page
-                  </Button>
-                )}
-              </Alert>
-            )}
+      {/* Stats Section */}
+      <Row className="mb-5">
+        <Col md={3} className="mb-3">
+          <Card className="border-0 shadow-sm h-100">
+            <CardBody className="text-center p-4">
+              <BookOpen size={32} className="text-primary mb-3" />
+              <h3 className="mb-1">{stats.testsCompleted}</h3>
+              <p className="text-muted mb-0">Tests Completed</p>
+            </CardBody>
+          </Card>
+        </Col>
+        <Col md={3} className="mb-3">
+          <Card className="border-0 shadow-sm h-100">
+            <CardBody className="text-center p-4">
+              <Target size={32} className="text-success mb-3" />
+              <h3 className="mb-1">{stats.averageScore}%</h3>
+              <p className="text-muted mb-0">Average Score</p>
+            </CardBody>
+          </Card>
+        </Col>
+        <Col md={3} className="mb-3">
+          <Card className="border-0 shadow-sm h-100">
+            <CardBody className="text-center p-4">
+              <Award size={32} className="text-warning mb-3" />
+              <h3 className="mb-1">{stats.passedTests}</h3>
+              <p className="text-muted mb-0">Tests Passed</p>
+            </CardBody>
+          </Card>
+        </Col>
+        <Col md={3} className="mb-3">
+          <Card className="border-0 shadow-sm h-100">
+            <CardBody className="text-center p-4">
+              <Clock size={32} className="text-info mb-3" />
+              <h3 className="mb-1">{stats.testsAvailable}</h3>
+              <p className="text-muted mb-0">Available Tests</p>
+            </CardBody>
+          </Card>
+        </Col>
+      </Row>
 
-            {/* Active Session Banner */}
-            {shouldShowSessionBanner() && (
-              <Alert color={
-                sessionStatus.isPaused ? "warning" :
-                  sessionStatus.timeRemaining <= 300 ? "danger" : "info"
-              } className="mb-4">
-                <div className="d-flex justify-content-between align-items-center">
-                  <div>
-                    <h5 className="alert-heading mb-2">
-                      <i className={`fas fa-${sessionStatus.isPaused ? 'pause-circle' : 'play-circle'} me-2`}></i>
-                      {sessionStatus.isPaused ? 'Paused Test Session' : 'Active Test Session'}
-                    </h5>
+      {/* Main Content Area */}
+      <Row>
+        {/* Available Tests Section */}
+        <Col lg={8} className="mb-4">
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="bg-white border-bottom-0 pb-0">
+              <h5 className="mb-0">Available Tests</h5>
+            </CardHeader>
+            <CardBody>
+              {tests.length === 0 ? (
+                <div className="text-center py-5 text-muted">
+                  <BookOpen size={48} className="mx-auto mb-3 opacity-50" />
+                  <h6>No Tests Available</h6>
+                  <p>Check back later for new assessments</p>
+                </div>
+              ) : (
+                <Row>
+                  {tests.slice(0, 6).map(test => {
+                    const hasRemainingAttempts = test.attempts.remaining > 0;
+                    
+                    return (
+                      <Col md={6} key={test._id} className="mb-4">
+                        <Card className="border h-100">
+                          <CardBody>
+                            <div className="d-flex justify-content-between align-items-start mb-3">
+                              <h6 className="mb-0">{test.title}</h6>
+                              <div className="d-flex gap-2">
+                                <Badge color="primary">{test.difficulty}</Badge>
+                                {test.hasOverride && (
+                                  <Badge color="warning">Override</Badge>
+                                )}
+                              </div>
+                            </div>
+                            
+                            <p className="text-muted small mb-3">
+                              {test.description?.substring(0, 80)}...
+                            </p>
+                            
+                            <div className="d-flex justify-content-between text-sm text-muted mb-2">
+                              <span>{test.questionCount} Questions</span>
+                              <span>{test.timeLimit} min</span>
+                            </div>
 
-                    {/* Session info */}
-                    {sessionStatus.sessionInfo && (
-                      <div className="mb-2">
-                        <strong>{sessionStatus.sessionInfo.title}</strong>
-                        <br />
+                            {/* Attempt Information */}
+                            <div className="d-flex justify-content-between text-sm mb-3">
+                              <span className={`${hasRemainingAttempts ? 'text-success' : 'text-danger'}`}>
+                                Attempts: {test.attempts.used}/{test.attempts.total}
+                              </span>
+                              <span className="text-muted">
+                                {hasRemainingAttempts ? 
+                                  `${test.attempts.remaining} remaining` : 
+                                  'No attempts left'
+                                }
+                              </span>
+                            </div>
+
+                            {/* Progress Bar */}
+                            <div className="mb-3">
+                              <Progress 
+                                value={(test.attempts.used / test.attempts.total) * 100} 
+                                color={hasRemainingAttempts ? 'primary' : 'danger'}
+                                className="progress-sm"
+                              />
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="d-flex gap-2">
+                              {hasRemainingAttempts && test.canTakeTest ? (
+                                <Button 
+                                  color="primary" 
+                                  size="sm" 
+                                  className="flex-grow-1"
+                                  onClick={() => navigateToPath(`/test-details/${test._id}`)}
+                                >
+                                  <Play size={16} className="me-1" />
+                                  Start Test
+                                </Button>
+                              ) : (
+                                <Button 
+                                  color="outline-secondary" 
+                                  size="sm" 
+                                  className="flex-grow-1"
+                                  disabled
+                                >
+                                  No Attempts Left
+                                </Button>
+                              )}
+                              
+                              {!hasRemainingAttempts && (
+                                <Button 
+                                  color="warning" 
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedTest(test);
+                                    setShowRequestModal(true);
+                                  }}
+                                  title="Request more attempts"
+                                >
+                                  <RotateCcw size={16} className="me-1" />
+                                  Request
+                                </Button>
+                              )}
+                              
+                              {hasRemainingAttempts && (
+                                <Button 
+                                  color="outline-secondary" 
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedTest(test);
+                                    setShowRequestModal(true);
+                                  }}
+                                  title="Request additional attempts"
+                                >
+                                  <RotateCcw size={16} />
+                                </Button>
+                              )}
+                            </div>
+
+                            {/* Status Indicators */}
+                            {!hasRemainingAttempts && (
+                              <div className="mt-2">
+                                <Badge color="danger" className="small">
+                                  <AlertCircle size={12} className="me-1" />
+                                  Exhausted
+                                </Badge>
+                              </div>
+                            )}
+                          </CardBody>
+                        </Card>
+                      </Col>
+                    );
+                  })}
+                </Row>
+              )}
+            </CardBody>
+          </Card>
+        </Col>
+
+        {/* Sidebar */}
+        <Col lg={4}>
+          {/* Recent Activity */}
+          <Card className="border-0 shadow-sm mb-4">
+            <CardHeader className="bg-white border-bottom-0">
+              <h6 className="mb-0">Recent Activity</h6>
+            </CardHeader>
+            <CardBody>
+              {recentActivity.length === 0 ? (
+                <div className="text-center py-4 text-muted">
+                  <Clock size={32} className="mx-auto mb-2 opacity-50" />
+                  <p className="small mb-0">No recent activity</p>
+                </div>
+              ) : (
+                <div>
+                  {recentActivity.map(item => (
+                    <div key={item.id} className="d-flex align-items-start mb-3 pb-3 border-bottom">
+                      <div className={`me-3 mt-1 text-${
+                        item.status === 'completed' ? 'success' : 
+                        item.status === 'failed' ? 'danger' : 
+                        'primary'
+                      }`}>
+                        {item.icon}
+                      </div>
+                      <div className="flex-grow-1">
+                        <h6 className="mb-1 small">{item.title}</h6>
+                        <p className="text-muted small mb-1">{item.description}</p>
                         <small className="text-muted">
-                          Question {sessionStatus.questionIndex + 1} of {sessionStatus.sessionInfo.totalQuestions}
+                          {new Date(item.timestamp).toLocaleDateString()}
                         </small>
                       </div>
-                    )}
-
-                    {/* Status badges */}
-                    <div className="mb-2">
-                      <Badge color={sessionStatus.isPaused ? 'warning' : 'primary'} className="me-2">
-                        Status: {sessionStatus.status}
-                      </Badge>
-
-                      <Badge color={sessionStatus.isConnected ? 'success' : 'danger'} className="me-2">
-                        {sessionStatus.isConnected ? 'Connected' : 'Disconnected'}
-                      </Badge>
-
-                      {!sessionStatus.isTimerSynced && (
-                        <Badge color="warning" className="me-2">
-                          Timer Syncing...
+                      {item.score && (
+                        <Badge color={item.score >= 80 ? 'success' : item.score >= 60 ? 'warning' : 'danger'}>
+                          {Math.round(item.score)}%
                         </Badge>
                       )}
                     </div>
+                  ))}
+                </div>
+              )}
+            </CardBody>
+          </Card>
 
-                    {/* Timer display */}
-                    <div className="mb-2">
-                      <span className={`fw-bold ${!sessionStatus.hasValidTimer ? 'text-muted' :
-                          sessionStatus.timeRemaining <= 60 ? 'text-danger' :
-                            sessionStatus.timeRemaining <= 300 ? 'text-warning' : 'text-info'
-                        }`}>
-                        <i className="fas fa-clock me-1"></i>
-                        Time Remaining: {formatTimeDisplay(sessionStatus.timeRemaining, sessionStatus.hasValidTimer)}
-                      </span>
-
-                      {sessionStatus.isPaused && (
-                        <span className="text-warning ms-2">(PAUSED)</span>
-                      )}
-
-                      {!sessionStatus.isTimerSynced && (
-                        <Spinner size="sm" className="ms-2" />
-                      )}
-                    </div>
-
-                    {/* Network warnings */}
-                    {!networkStatus.isOnline && (
-                      <div className="mb-2">
-                        <Badge color="warning">
-                          <i className="fas fa-wifi me-1"></i>
-                          Offline - Timer paused
-                        </Badge>
+          {/* My Requests */}
+          {dashboardData.requests.length > 0 && (
+            <Card className="border-0 shadow-sm mb-4">
+              <CardHeader className="bg-white border-bottom-0">
+                <h6 className="mb-0">My Requests</h6>
+              </CardHeader>
+              <CardBody>
+                {dashboardData.requests.map(request => (
+                  <div key={request.id} className="mb-3 p-2 border rounded">
+                    <div className="d-flex justify-content-between align-items-start">
+                      <div>
+                        <h6 className="small mb-1">{request.testTitle}</h6>
+                        <small className="text-muted">{request.requestedAttempts} attempts requested</small>
                       </div>
-                    )}
+                      <Badge color={
+                        request.status === 'approved' ? 'success' : 
+                        request.status === 'rejected' ? 'danger' : 
+                        'warning'
+                      }>
+                        {request.status}
+                      </Badge>
+                    </div>
                   </div>
+                ))}
+              </CardBody>
+            </Card>
+          )}
 
-                  {/* Action button */}
-                  <div>
-                    <Button
-                      color={sessionStatus.timeRemaining <= 300 ? "danger" : sessionStatus.isPaused ? "warning" : "info"}
-                      onClick={() => navigate(`/test-session/${sessionStatus.sessionId}`)}
-                    >
-                      <i className={`fas fa-${sessionStatus.isPaused ? 'play' : 'arrow-right'} me-2`}></i>
-                      {sessionStatus.isPaused ? 'Resume Test' :
-                        sessionStatus.timeRemaining <= 300 ? 'Continue NOW!' : 'Continue Test'}
-                    </Button>
-                  </div>
-                </div>
-              </Alert>
-            )}
+          {/* Quick Actions */}
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="bg-white border-bottom-0">
+              <h6 className="mb-0">Quick Actions</h6>
+            </CardHeader>
+            <CardBody>
+              <div className="d-grid gap-2">
+                <Button color="outline-primary" onClick={() => navigateToPath('/progress')}>
+                  <BarChart3 size={16} className="me-2" />
+                  View Progress
+                </Button>
+                <Button color="outline-secondary" onClick={() => navigateToPath('/schedule')} disabled>
+                  <Calendar size={16} className="me-2" />
+                  Schedule (Soon)
+                </Button>
+                <Button color="outline-info" onClick={() => navigateToPath('/profile')}>
+                  <User size={16} className="me-2" />
+                  Edit Profile
+                </Button>
+              </div>
+            </CardBody>
+          </Card>
+        </Col>
+      </Row>
 
-            {/* Error Alert */}
-            {error && (
-              <Alert color="danger" className="mb-4">
-                <i className="fas fa-exclamation-triangle me-2"></i>
-                {error}
-                <div className="mt-2">
-                  <Button color="danger" size="sm" onClick={refreshDashboard}>
-                    <i className="fas fa-redo me-2"></i>
-                    Retry
-                  </Button>
-                </div>
-              </Alert>
-            )}
-          </Col>
-        </Row>
+      {/* Request Attempts Modal */}
+      <Modal isOpen={showRequestModal} toggle={() => setShowRequestModal(false)}>
+        <ModalHeader toggle={() => setShowRequestModal(false)}>
+          Request Additional Attempts
+        </ModalHeader>
+        <ModalBody>
+          {selectedTest && (
+            <div className="mb-3">
+              <h6>{selectedTest.title}</h6>
+              <p className="text-muted small">{selectedTest.description}</p>
+              <div className="small">
+                <span className="text-muted">Current attempts: </span>
+                <span className={selectedTest.attempts.remaining > 0 ? 'text-success' : 'text-danger'}>
+                  {selectedTest.attempts.used}/{selectedTest.attempts.total}
+                </span>
+              </div>
+            </div>
+          )}
+          
+          <div className="mb-3">
+            <label className="form-label">Additional attempts needed</label>
+            <Input
+              type="select"
+              value={requestForm.attempts}
+              onChange={(e) => setRequestForm({ ...requestForm, attempts: parseInt(e.target.value) })}
+            >
+              <option value={1}>1 additional attempt</option>
+              <option value={2}>2 additional attempts</option>
+              <option value={3}>3 additional attempts</option>
+            </Input>
+          </div>
 
-        {/* Dashboard Content */}
-        <StatsCards stats={stats} />
-
-        <Row className="mb-5">
-          <Col lg={12}>
-            <AvailableTests
-              tests={availableTests}
-              onStartTest={handleStartTest}
-              loading={loading}
+          <div className="mb-3">
+            <label className="form-label">Reason for request *</label>
+            <Input
+              type="textarea"
+              rows={3}
+              placeholder="Please explain why you need additional attempts..."
+              value={requestForm.reason}
+              onChange={(e) => setRequestForm({ ...requestForm, reason: e.target.value })}
             />
-          </Col>
-        </Row>
+          </div>
 
-        {/* UPDATED: Single RecentActivity component instead of two separate components */}
-        <Row>
-          <Col lg={12}>
-            <RecentActivity sessions={recentSessions} />
-          </Col>
-        </Row>
+          <Alert color="info" className="small mb-0">
+            <AlertCircle size={16} className="me-2" />
+            Your request will be reviewed by an instructor. You'll be notified of the decision.
+          </Alert>
+        </ModalBody>
+        <ModalFooter>
+          <Button color="secondary" onClick={() => setShowRequestModal(false)}>
+            Cancel
+          </Button>
+          <Button color="primary" onClick={handleRequestAttempts}>
+            Submit Request
+          </Button>
+        </ModalFooter>
+      </Modal>
 
-        {/* Active Session Conflict Modal */}
-        <Modal isOpen={showActiveSessionModal} toggle={() => setShowActiveSessionModal(false)}>
-          <ModalHeader toggle={() => setShowActiveSessionModal(false)}>
-            Active Test Session Found
-          </ModalHeader>
-          <ModalBody>
-            <div className="text-center mb-3">
-              <i className="fas fa-exclamation-triangle text-warning" style={{ fontSize: '3rem' }}></i>
-            </div>
-            <p className="text-center">
-              You have an active test session that can be resumed.
-            </p>
-            {sessionCheckResult?.testInfo && (
-              <div className="text-center mb-3">
-                <strong>{sessionCheckResult.testInfo.title}</strong>
-                <br />
-                <small className="text-muted">
-                  Progress: {sessionCheckResult.testInfo.answeredQuestions}/{sessionCheckResult.testInfo.totalQuestions} questions
-                </small>
-                <br />
-                <small className="text-info">
-                  Time Remaining: {sessionCheckResult.timeRemaining ?
-                    formatTimeDisplay(sessionCheckResult.timeRemaining, true) :
-                    'Loading...'
-                  }
-                </small>
-              </div>
-            )}
-            <p className="text-center text-muted">
-              Would you like to resume your current test or start a new one?
-            </p>
-          </ModalBody>
-          <ModalFooter>
-            <Button color="secondary" onClick={() => setShowActiveSessionModal(false)}>
-              Cancel
-            </Button>
-            <Button color="info" onClick={handleResumeSession}>
-              <i className="fas fa-play me-2"></i>
-              Resume Current Test
-            </Button>
-            <Button color="warning" onClick={handleAbandonAndStartNew}>
-              <i className="fas fa-plus me-2"></i>
-              Start New Test
-            </Button>
-          </ModalFooter>
-        </Modal>
-
-        {/* Rejoin Session Modal */}
-        <Modal isOpen={showRejoinModal} toggle={() => setShowRejoinModal(false)}>
-          <ModalHeader toggle={() => setShowRejoinModal(false)}>
-            {sessionStatus.isPaused ? 'Resume Paused Session?' : 'Resume Test Session?'}
-          </ModalHeader>
-          <ModalBody>
-            <div className="text-center mb-3">
-              <i className={`fas fa-${sessionStatus.isPaused ? 'pause-circle text-warning' : 'play-circle text-info'}`} style={{ fontSize: '3rem' }}></i>
-            </div>
-            {sessionCheckResult?.testInfo && (
-              <div className="text-center">
-                <p>You have {sessionStatus.isPaused ? 'a paused' : 'an active'} test session for:</p>
-                <h5>{sessionCheckResult.testInfo.title}</h5>
-                <div className="mb-3">
-                  <Badge color="primary" className="me-2">
-                    {sessionCheckResult.testInfo.answeredQuestions}/{sessionCheckResult.testInfo.totalQuestions} questions answered
-                  </Badge>
-                  <Badge color={sessionStatus.isPaused ? 'warning' : 'info'}>
-                    {sessionCheckResult.timeRemaining ?
-                      formatTimeDisplay(sessionCheckResult.timeRemaining, true) :
-                      'Loading...'
-                    } remaining
-                  </Badge>
-                  {sessionStatus.isPaused && (
-                    <Badge color="warning" className="ms-2">PAUSED</Badge>
-                  )}
-                </div>
-                <p className="text-muted">
-                  {sessionStatus.isPaused
-                    ? 'Your session was paused. You can continue where you left off.'
-                    : 'You can continue where you left off.'
-                  }
-                </p>
-              </div>
-            )}
-          </ModalBody>
-          <ModalFooter>
-            <Button color="secondary" onClick={() => setShowRejoinModal(false)}>
-              Not Now
-            </Button>
-            <Button color={sessionStatus.isPaused ? 'warning' : 'primary'} onClick={handleResumeSession}>
-              <i className="fas fa-play me-2"></i>
-              {sessionStatus.isPaused ? 'Resume Session' : 'Continue Test'}
-            </Button>
-          </ModalFooter>
-        </Modal>
-      </Container>
-    </div>
+      {/* Error Alert */}
+      {error && (
+        <Alert color="danger" className="position-fixed" style={{ top: '20px', right: '20px', zIndex: 1050 }}>
+          <AlertCircle size={16} className="me-2" />
+          {error}
+        </Alert>
+      )}
+    </Container>
   );
-};
-
-export default Dashboard;
+}

@@ -1,15 +1,15 @@
 // src/components/QuestionCreation/steps/TestCasesStep.tsx - Fixed for backend compatibility
-import React, { useState, useEffect } from 'react';
-import { Row, Badge, Alert } from 'reactstrap';
-import { HelpCircle, CheckCircle, AlertTriangle } from 'lucide-react';
+import { AlertTriangle, CheckCircle, HelpCircle } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Alert, Badge, Row } from 'reactstrap';
 import { useQuestionCreation } from '../../../context/QuestionCreationContext';
-import type { TestCase, Language } from '../../../types';
+import type { TestCase } from '../../../types';
 
 // Import modular components
-import TestCaseForm from '../components/TestCaseForm';
-import TestCasesList from '../components/TestCasesList';
-import TestCaseSidebar from '../components/TestCaseSidebar';
 import SolutionCodeModal from '../components/SolutionCodeModal';
+import TestCaseForm from '../components/TestCaseForm';
+import TestCaseSidebar from '../components/TestCaseSidebar';
+import TestCasesList from '../components/TestCasesList';
 
 // Updated interface to match backend schema
 interface TestCaseFormData {
@@ -36,9 +36,6 @@ const TestCasesStep: React.FC = () => {
     formatTestSuitePreview,
     requiresTestCases: contextRequiresTestCases,
     requiresRuntime,
-    validation,
-    isFieldRequired,
-    getValidationWarnings
   } = useQuestionCreation();
 
   const [showHiddenTestCases, setShowHiddenTestCases] = useState(false);

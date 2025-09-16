@@ -1,8 +1,8 @@
-// hooks/useQuestionStats.ts - FIXED: Explicit parameter types
+// hooks/useQuestionStats.ts - FIXED: Remove wrapper response handling
 import { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import apiService from '../services/ApiService';
-import { skills, getSkillCount } from '../config/skills';
+import { useAuth } from '../../context/AuthContext';
+import apiService from '../../services/ApiService';
+import { skills, getSkillCount } from '../../config/skills';
 
 interface QuestionStatsData {
   byLanguage: Array<{
@@ -61,27 +61,22 @@ export const useQuestionStats = (): UseQuestionStatsReturn => {
       setLoading(true);
       setError(null);
 
-      console.log('useQuestionStats: Fetching question stats for user:', {
-        loginId: user.loginId,
-        role: user.role,
-        organizationId: user.organizationId,
-        isSuperOrgAdmin: user.organization?.isSuperOrg && user.role === 'admin'
-      });
+      // FIXED: API service returns data directly, no wrapper
+      const statsData = await apiService.getQuestionStats();
 
-      const statsResponse = await apiService.getQuestionStats();
 
-      console.log('useQuestionStats: Stats response:', {
-        error: statsResponse.error,
-        status: statsResponse.status,
-        message: statsResponse.message,
-        data: statsResponse.data
-      });
-
-      if (statsResponse.error || !statsResponse.data) {
-        throw new Error(statsResponse.message || 'Failed to fetch question statistics');
+      // FIXED: Use statsData directly, not statsData.data
+      const { byLanguage, totals } = statsData;
+      
+      // Validate the response structure
+      if (!byLanguage || !Array.isArray(byLanguage)) {
+        throw new Error('Invalid response: byLanguage is not an array');
+      }
+      
+      if (!totals || typeof totals !== 'object') {
+        throw new Error('Invalid response: totals is missing or invalid');
       }
 
-      const { byLanguage, totals } = statsResponse.data;
       setRawLanguageStats(byLanguage);
       
       // Calculate skill counts using the helper function
@@ -104,16 +99,13 @@ export const useQuestionStats = (): UseQuestionStatsReturn => {
           });
         }
       });
-
-      console.log('useQuestionStats: Processed skill counts:', skillCounts);
-      console.log('useQuestionStats: Sub-category breakdowns:', subBreakdowns);
       
       setStats(skillCounts);
       setSubCategoryBreakdowns(subBreakdowns);
       setTotalStats(totals);
       setMaxCount(maxSkillCount);
     } catch (error: any) {
-      console.error('Error fetching question stats:', error);
+      console.error('useQuestionStats: Error fetching question stats:', error);
       setError(error.message || 'Failed to fetch question statistics');
     } finally {
       setLoading(false);

@@ -1,45 +1,40 @@
 // src/pages/TestDetailsPage.tsx - CORRECTED to handle session conflicts properly
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import apiService from '../services/ApiService';
 import {
-  Container,
-  Row,
-  Col,
+  AlertTriangle,
+  ArrowLeft,
+  Award,
+  Clock,
+  FileText,
+  Info,
+  Play,
+  RotateCcw,
+  Target
+} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import {
+  Alert,
+  Badge,
+  Button,
   Card,
   CardBody,
   CardHeader,
-  Button,
-  Badge,
-  Alert,
-  Spinner,
+  Col,
+  Container,
   Modal,
-  ModalHeader,
   ModalBody,
-  ModalFooter
+  ModalFooter,
+  ModalHeader,
+  Row,
+  Spinner
 } from 'reactstrap';
-import {
-  ArrowLeft,
-  Clock,
-  FileText,
-  Award,
-  Target,
-  AlertTriangle,
-  Play,
-  Info,
-  RotateCcw
-} from 'lucide-react';
-import type { Test, TestType, Language } from '../types';
-import type {
-  StartSessionConflictResponse,
-  CheckExistingSessionResponse
-} from '../types/session';
+import apiService from '../services/ApiService';
+import type { Language, Test, TestType } from '../types';
+
 
 const TestDetailsPage: React.FC = () => {
   const { testId } = useParams<{ testId: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
 
   const [test, setTest] = useState<Test | null>(null);
   const [loading, setLoading] = useState(true);
@@ -67,8 +62,6 @@ const TestDetailsPage: React.FC = () => {
       setLoading(true);
       setError(null);
 
-      console.log('Fetching test details for ID:', testId);
-
       // FIXED: getTest() returns Test directly, no .data wrapper
       const test = await apiService.getTest(testId!);
 
@@ -77,7 +70,6 @@ const TestDetailsPage: React.FC = () => {
       }
 
       setTest(test);
-      console.log('Test details loaded:', test);
 
     } catch (err: any) {
       console.error('Error fetching test details:', err);
@@ -98,8 +90,6 @@ const TestDetailsPage: React.FC = () => {
       setStarting(true);
       setError(null);
 
-      console.log('Starting test session for test:', testId, { forceNew });
-
       // CORRECTED: Use proper API call structure
       const response = await apiService.startTestSession({
         testId,
@@ -110,8 +100,6 @@ const TestDetailsPage: React.FC = () => {
         throw new Error(response.message || 'Failed to start test session');
       }
 
-      console.log('Test session started:', response);
-
       // FIXED: Navigate using TEST ID, not session ID
       navigate(`/test-session/${testId}`);
 
@@ -120,7 +108,6 @@ const TestDetailsPage: React.FC = () => {
 
       // CORRECTED: Handle session conflict errors properly
       if (err.code === 'EXISTING_SESSION_FOUND' && err.existingSession) {
-        console.log('Session conflict detected:', err.existingSession);
         setExistingSession(err.existingSession);
         setShowConflictModal(true);
         setShowStartModal(false);
@@ -138,7 +125,6 @@ const TestDetailsPage: React.FC = () => {
 
     try {
       setConflictLoading(true);
-      console.log('Rejoining existing session:', existingSession.sessionId);
 
       // Navigate to test session page with TEST ID
       navigate(`/test-session/${testId}`);
@@ -156,7 +142,6 @@ const TestDetailsPage: React.FC = () => {
   const handleAbandonAndStartNew = async () => {
     try {
       setConflictLoading(true);
-      console.log('Starting new session with forceNew=true');
 
       // Close conflict modal and start new session
       setShowConflictModal(false);

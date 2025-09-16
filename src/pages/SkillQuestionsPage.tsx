@@ -1,4 +1,4 @@
-// pages/SkillQuestionsPage.tsx - Clean build with language-based filtering and status filter
+// pages/SkillQuestionsPage.tsx - Fixed pagination and server-side filtering
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -48,6 +48,7 @@ import {
 } from 'lucide-react';
 import { skills } from '../config/skills';
 import type { Question, QuestionType, QuestionCategory } from '../types';
+
 import {
   getQuestionTypesForLanguage,
   getCategoriesForLanguage,
@@ -122,6 +123,9 @@ const SkillQuestionsPage: React.FC = () => {
   const [subLanguageFilter, setSubLanguageFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('active');
 
+  // Search debounce
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+
   // Delete modal state
   const [deleteModal, setDeleteModal] = useState(false);
   const [questionToDelete, setQuestionToDelete] = useState<{ id: string; title: string } | null>(null);
@@ -129,6 +133,15 @@ const SkillQuestionsPage: React.FC = () => {
 
   // Find skill configuration
   const skill = skills.find(s => s.skill === skillName);
+
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   // Get current effective language
   const getCurrentLanguage = () => {
@@ -167,7 +180,12 @@ const SkillQuestionsPage: React.FC = () => {
     }
   }, [subLanguageFilter, typeFilter, categoryFilter]);
 
-  // Fetch questions
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [difficultyFilter, typeFilter, categoryFilter, subLanguageFilter, statusFilter, debouncedSearchTerm]);
+
+  // Fetch questions with proper pagination
   const fetchQuestions = async (page: number = 1) => {
     if (!user || !skill) return;
 
@@ -179,6 +197,7 @@ const SkillQuestionsPage: React.FC = () => {
       const params: any = {
         limit: ITEMS_PER_PAGE,
         skip,
+        includeTotalCount: true
       };
 
       // Handle language filtering
@@ -198,53 +217,53 @@ const SkillQuestionsPage: React.FC = () => {
       if (categoryFilter !== 'all') params.category = categoryFilter;
       if (statusFilter !== 'all') params.status = statusFilter;
 
-      // FIXED: getAllQuestions with includeTotalCount returns object or array directly
+      // Server-side search
+      if (debouncedSearchTerm.trim()) {
+        params.search = debouncedSearchTerm.trim();
+      }
+
       const response = await apiService.getAllQuestions(params, true);
 
-      // FIXED: No error property, response IS the data
       if (!response) {
         setQuestions([]);
         setTotalQuestions(0);
         return;
       }
 
-      // Handle response format - can be array or object with pagination info
+      // Handle both response formats properly
       if (Array.isArray(response)) {
+        // This shouldn't happen when includeTotalCount=true, but handle it just in case
         setQuestions(response);
         setTotalQuestions(response.length);
       } else {
-        // Response is paginated object: { questions: Question[], totalCount: number, totalPages: number }
+        // This is the expected format when includeTotalCount=true
         setQuestions(response.questions || []);
-        setTotalQuestions(response.totalCount || 0);
+        setTotalQuestions(response.pagination?.totalCount || 0);
       }
 
     } catch (error: any) {
       console.error('Error fetching questions:', error);
       setError(error.message || 'Failed to fetch questions');
+      setQuestions([]);
+      setTotalQuestions(0);
     } finally {
       setLoading(false);
     }
   };
 
+  // Fetch questions when dependencies change
   useEffect(() => {
     if (skill) {
       fetchQuestions(currentPage);
     }
-  }, [skill, currentPage, difficultyFilter, typeFilter, categoryFilter, subLanguageFilter, statusFilter]);
+  }, [skill, currentPage, difficultyFilter, typeFilter, categoryFilter, subLanguageFilter, statusFilter, debouncedSearchTerm]);
 
-  // Client-side search filtering
-  const filteredQuestions = questions.filter(question =>
-    question.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    question.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (question.tags && question.tags.some(tag =>
-      tag.toLowerCase().includes(searchTerm.toLowerCase())
-    ))
-  );
-
+  // Calculate pagination
   const totalPages = Math.ceil(totalQuestions / ITEMS_PER_PAGE);
 
   // Event handlers
   const handlePageChange = (page: number) => {
+    if (page < 1 || page > totalPages) return;
     setCurrentPage(page);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -274,17 +293,25 @@ const SkillQuestionsPage: React.FC = () => {
 
     try {
       setDeleting(true);
-      // FIXED: deleteQuestion returns { message: string } directly
       const response = await apiService.deleteQuestion(questionToDelete.id);
 
-      // FIXED: No error property, response IS the success object
       if (!response || !response.message) {
         throw new Error('Failed to delete question');
       }
 
       setDeleteModal(false);
       setQuestionToDelete(null);
-      fetchQuestions(currentPage);
+
+      // Refresh current page or go to previous if current page would be empty
+      const newTotalQuestions = totalQuestions - 1;
+      const newTotalPages = Math.ceil(newTotalQuestions / ITEMS_PER_PAGE);
+      const pageToFetch = currentPage > newTotalPages ? Math.max(1, newTotalPages) : currentPage;
+
+      if (pageToFetch !== currentPage) {
+        setCurrentPage(pageToFetch);
+      } else {
+        fetchQuestions(currentPage);
+      }
     } catch (error: any) {
       alert('Error deleting question: ' + error.message);
     } finally {
@@ -304,6 +331,7 @@ const SkillQuestionsPage: React.FC = () => {
     setCategoryFilter('all');
     setSubLanguageFilter('all');
     setStatusFilter('active');
+    setCurrentPage(1);
   };
 
   // Get type-specific info for display
@@ -316,6 +344,13 @@ const SkillQuestionsPage: React.FC = () => {
             icon: TestTube,
             text: `${question.testCases.length} test cases`,
             color: 'info'
+          };
+        }
+        if (question.type === 'codeDebugging' && question.buggyCode) {
+          return {
+            icon: Bug,
+            text: 'Has buggy code',
+            color: 'warning'
           };
         }
         break;
@@ -337,17 +372,35 @@ const SkillQuestionsPage: React.FC = () => {
           };
         }
         break;
-      case 'codeDebugging':
-        if (question.buggyCode) {
-          return {
-            icon: Bug,
-            text: 'Has buggy code',
-            color: 'warning'
-          };
-        }
-        break;
     }
     return null;
+  };
+
+  // Get pagination range
+  const getPaginationRange = () => {
+    const delta = 2;
+    const range = [];
+    const rangeWithDots = [];
+
+    for (let i = Math.max(2, currentPage - delta); i <= Math.min(totalPages - 1, currentPage + delta); i++) {
+      range.push(i);
+    }
+
+    if (currentPage - delta > 2) {
+      rangeWithDots.push(1, '...');
+    } else {
+      rangeWithDots.push(1);
+    }
+
+    rangeWithDots.push(...range);
+
+    if (currentPage + delta < totalPages - 1) {
+      rangeWithDots.push('...', totalPages);
+    } else if (totalPages > 1) {
+      rangeWithDots.push(totalPages);
+    }
+
+    return rangeWithDots;
   };
 
   // Get filtered options
@@ -449,10 +502,7 @@ const SkillQuestionsPage: React.FC = () => {
                 <Input
                   type="select"
                   value={statusFilter}
-                  onChange={(e) => {
-                    console.log('Status filter changed to:', e.target.value);
-                    setStatusFilter(e.target.value);
-                  }}
+                  onChange={(e) => setStatusFilter(e.target.value)}
                 >
                   <option value="all">All Status</option>
                   <option value="draft">Draft</option>
@@ -551,11 +601,17 @@ const SkillQuestionsPage: React.FC = () => {
                 </Button>
               </Col>
 
-              {/* Results count and current filters */}
+              {/* Results count and pagination info */}
               <Col md={6} className="text-end">
                 <div className="d-flex justify-content-end align-items-center gap-3">
                   <div className="text-muted small">
-                    <strong>{filteredQuestions.length}</strong> questions found
+                    {totalQuestions > 0 ? (
+                      <>
+                        Showing {((currentPage - 1) * ITEMS_PER_PAGE) + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, totalQuestions)} of <strong>{totalQuestions}</strong> questions
+                      </>
+                    ) : (
+                      'No questions found'
+                    )}
                   </div>
 
                   {/* Active filter badges */}
@@ -578,6 +634,11 @@ const SkillQuestionsPage: React.FC = () => {
                     {categoryFilter !== 'all' && (
                       <Badge color="info" className="small">
                         {CATEGORY_CONFIGS[categoryFilter as keyof typeof CATEGORY_CONFIGS]?.label || categoryFilter}
+                      </Badge>
+                    )}
+                    {debouncedSearchTerm && (
+                      <Badge color="info" className="small">
+                        Search: "{debouncedSearchTerm}"
                       </Badge>
                     )}
                   </div>
@@ -613,7 +674,7 @@ const SkillQuestionsPage: React.FC = () => {
 
         {/* Questions Grid */}
         <Row className="g-3">
-          {filteredQuestions.map((question) => {
+          {questions.map((question) => {
             const typeConfig = QUESTION_TYPE_CONFIGS[question.type];
             const categoryConfig = question.category ? CATEGORY_CONFIGS[question.category] : null;
             const statusConfig = STATUS_CONFIGS[question.status];
@@ -726,7 +787,7 @@ const SkillQuestionsPage: React.FC = () => {
         </Row>
 
         {/* Empty State */}
-        {filteredQuestions.length === 0 && !loading && (
+        {questions.length === 0 && !loading && (
           <Card className="border-0 shadow-sm text-center py-5">
             <CardBody>
               <skill.icon className={`text-${skill.color} mb-3`} size={48} />
@@ -756,8 +817,8 @@ const SkillQuestionsPage: React.FC = () => {
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="d-flex justify-content-center mt-4">
-            <Pagination>
+          <div className="d-flex justify-content-center align-items-center mt-4">
+            <Pagination className="mb-0">
               <PaginationItem disabled={currentPage === 1}>
                 <PaginationLink
                   onClick={() => handlePageChange(currentPage - 1)}
@@ -767,16 +828,16 @@ const SkillQuestionsPage: React.FC = () => {
                 </PaginationLink>
               </PaginationItem>
 
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                const page = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i;
-                return (
-                  <PaginationItem key={page} active={page === currentPage}>
-                    <PaginationLink onClick={() => handlePageChange(page)}>
-                      {page}
-                    </PaginationLink>
-                  </PaginationItem>
-                );
-              })}
+              {getPaginationRange().map((page, index) => (
+                <PaginationItem key={index} active={page === currentPage} disabled={page === '...'}>
+                  <PaginationLink
+                    onClick={() => typeof page === 'number' && handlePageChange(page)}
+                    style={{ cursor: page === '...' ? 'default' : 'pointer' }}
+                  >
+                    {page}
+                  </PaginationLink>
+                </PaginationItem>
+              ))}
 
               <PaginationItem disabled={currentPage === totalPages}>
                 <PaginationLink
@@ -787,6 +848,10 @@ const SkillQuestionsPage: React.FC = () => {
                 </PaginationLink>
               </PaginationItem>
             </Pagination>
+
+            <div className="ms-3 text-muted small">
+              Page {currentPage} of {totalPages}
+            </div>
           </div>
         )}
 

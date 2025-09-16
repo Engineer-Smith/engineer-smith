@@ -1,7 +1,8 @@
-// src/components/admin/dashboard/AdminDashboard.tsx - Fixed TypeScript errors
+// src/pages/AdminDashboard.tsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import apiService from '../services/ApiService';
 import {
   Container,
@@ -10,20 +11,14 @@ import {
   Alert,
   Spinner
 } from 'reactstrap';
-import {
-  Users,
-  BookOpen,
-  FileText,
-  Monitor,
-  AlertCircle,
-  Activity,
-  BarChart3
-} from 'lucide-react';
+import { AlertCircle, Activity, BarChart3 } from 'lucide-react';
 
-// Components
+// Modular Components
 import DashboardHeader from '../components/admin/dashboard/DashboardHeader';
-import StatCard from '../components/admin/dashboard/StatCard';
-import FeatureCard from '../components/admin/dashboard/FeatureCard';
+import WelcomeSection from '../components/admin/dashboard/WelcomeSection';
+import StatsSection from '../components/admin/dashboard/StatsSection';
+import FeatureSection from '../components/admin/dashboard/FeatureSection';
+import StudentRequestsSection from '../components/admin/dashboard/StudentRequestsSection';
 import QuickActions from '../components/admin/dashboard/QuickActions';
 
 // Utils and Types
@@ -96,6 +91,7 @@ const calculateStats = (
 
 const AdminDashboard: React.FC = () => {
   const { user } = useAuth();
+  const { notifications } = useNotifications();
   const navigate = useNavigate();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -113,14 +109,6 @@ const AdminDashboard: React.FC = () => {
 
       const isSuperOrgAdmin = typedUser.organization?.isSuperOrg && typedUser.role === 'admin';
 
-      console.log('Dashboard: Fetching stats for user:', {
-        loginId: typedUser.loginId,
-        role: typedUser.role,
-        organizationId: typedUser.organizationId,
-        isSuperOrg: typedUser.organization?.isSuperOrg,
-        isSuperOrgAdmin
-      });
-
       const [users, questionStats, tests, sessions] = await Promise.all([
         apiService.getAllUsers(isSuperOrgAdmin ? {} : { orgId: typedUser.organizationId }),
         apiService.getQuestionStats(),
@@ -128,30 +116,11 @@ const AdminDashboard: React.FC = () => {
         apiService.getAllTestSessions(isSuperOrgAdmin ? {} : { orgId: typedUser.organizationId })
       ]);
 
-      if (!Array.isArray(users)) {
-        throw new Error('Failed to fetch users');
+      if (!Array.isArray(users) || !questionStats || !Array.isArray(tests) || !Array.isArray(sessions)) {
+        throw new Error('Failed to fetch dashboard data');
       }
-      if (!questionStats) {
-        throw new Error('Failed to fetch question stats');
-      }
-      if (!Array.isArray(tests)) {
-        throw new Error('Failed to fetch tests');
-      }
-      if (!Array.isArray(sessions)) {
-        throw new Error('Failed to fetch sessions');
-      }
-
-      console.log('Dashboard: Processed data:', {
-        usersCount: users.length,
-        totalQuestions: questionStats?.totals?.totalQuestions || 0,
-        questionsByLanguage: questionStats?.byLanguage?.length || 0,
-        testsCount: tests.length,
-        sessionsCount: sessions.length
-      });
 
       const calculatedStats = calculateStats(users, questionStats, tests, sessions, typedUser);
-
-      console.log('Dashboard: Calculated stats:', calculatedStats);
       setStats(calculatedStats);
 
     } catch (err) {
@@ -294,155 +263,63 @@ const AdminDashboard: React.FC = () => {
 
       <Container className="py-4">
         {/* Welcome Section */}
-        <Row className="mb-4">
-          <Col>
-            <h2 className="h3 mb-2">
-              Welcome back, {typedUser.loginId || 'Admin'}!
-            </h2>
-            <p className="text-muted mb-0">
-              {typedUser.organization?.isSuperOrg
-                ? "Manage the entire EngineerSmith platform, including all organizations and independent students."
-                : `Manage your ${typedUser.organization?.name} organization and access global platform features.`
-              }
-            </p>
-          </Col>
-        </Row>
+        <WelcomeSection user={typedUser} />
 
         {/* Stats Cards */}
         {stats && (
-          <Row className="g-3 mb-4">
-            <Col md={6} lg={3}>
-              <StatCard
-                title="Total Users"
-                value={stats.totalUsers || 0}
-                subtitle={typedUser.organization?.isSuperOrg ? `${stats.independentStudents || 0} independent students` : undefined}
-                icon={Users}
-                color="primary"
-                onClick={() => handleNavigation('/admin/users')}
-              />
-            </Col>
-            <Col md={6} lg={3}>
-              <StatCard
-                title="Question Bank"
-                value={stats.totalQuestions || 0}
-                subtitle={
-                  typedUser.organization?.isSuperOrg
-                    ? `Global questions available`
-                    : `Available to your organization`
-                }
-                icon={BookOpen}
-                color="success"
-                onClick={() => handleNavigation('/admin/question-bank')}
-              />
-            </Col>
-            <Col md={6} lg={3}>
-              <StatCard
-                title="Active Tests"
-                value={stats.activeTests || 0}
-                subtitle={`${stats.totalTests || 0} total tests`}
-                icon={FileText}
-                color="info"
-                onClick={() => handleNavigation('/admin/tests')}
-              />
-            </Col>
-            <Col md={6} lg={3}>
-              <StatCard
-                title="Active Sessions"
-                value={stats.activeSessions || 0}
-                subtitle="Users taking tests now"
-                icon={Monitor}
-                color="warning"
-                onClick={() => handleNavigation('/admin/sessions/active')}
-              />
-            </Col>
-          </Row>
+          <StatsSection 
+            user={typedUser} 
+            stats={stats} 
+            onNavigate={handleNavigation} 
+          />
         )}
 
         {/* Feature Cards - Organized by Logical Task-Based Sections */}
         
         {/* 1. USER MANAGEMENT SECTION */}
-        {userManagementFeatures.length > 0 && (
-          <>
-            <Row className="mb-3">
-              <Col>
-                <h4 className="h5 text-muted mb-0">User Management</h4>
-                <small className="text-muted">Manage students, instructors, and organizations</small>
-              </Col>
-            </Row>
-            <Row className="g-3 mb-4">
-              {userManagementFeatures.map((feature, index) => (
-                <Col key={`users-${feature.title}-${index}`} md={6} lg={4}>
-                  <FeatureCard
-                    feature={feature}
-                    onClick={handleNavigation}
-                  />
-                </Col>
-              ))}
-            </Row>
-          </>
-        )}
+        <FeatureSection
+          title="User Management"
+          subtitle="Manage students, instructors, and organizations"
+          features={userManagementFeatures}
+          onNavigate={handleNavigation}
+          sectionKey="users"
+        />
 
         {/* 2. CONTENT MANAGEMENT SECTION */}
-        {contentManagementFeatures.length > 0 && (
-          <>
-            <Row className="mb-3">
-              <Col>
-                <h4 className="h5 text-muted mb-0">Content Management</h4>
-                <small className="text-muted">Create and manage questions, tests, and learning materials</small>
-              </Col>
-            </Row>
-            <Row className="g-3 mb-4">
-              {contentManagementFeatures.map((feature, index) => (
-                <Col key={`content-${feature.title}-${index}`} md={6} lg={4}>
-                  <FeatureCard
-                    feature={feature}
-                    onClick={handleNavigation}
-                  />
-                </Col>
-              ))}
-            </Row>
-          </>
+        <FeatureSection
+          title="Content Management"
+          subtitle="Create and manage questions, tests, and learning materials"
+          features={contentManagementFeatures}
+          onNavigate={handleNavigation}
+          sectionKey="content"
+        />
+
+        {/* 3. STUDENT REQUESTS & APPROVALS SECTION */}
+        {stats && (
+          <StudentRequestsSection
+            stats={stats}
+            notifications={notifications}
+            onNavigate={handleNavigation}
+          />
         )}
 
-        {/* 3. ANALYTICS & LIVE SESSIONS SECTION */}
-        <Row className="mb-3">
-          <Col>
-            <h4 className="h5 text-muted mb-0">Analytics & Live Sessions</h4>
-            <small className="text-muted">Monitor active sessions, view results, and analyze performance</small>
-          </Col>
-        </Row>
-        <Row className="g-3 mb-4">
-          {analyticsAndMonitoringFeatures.map((feature, index) => (
-            <Col key={`analytics-${feature.title}-${index}`} md={6} lg={4}>
-              <FeatureCard
-                feature={feature}
-                onClick={handleNavigation}
-              />
-            </Col>
-          ))}
-        </Row>
+        {/* 4. ANALYTICS & LIVE SESSIONS SECTION */}
+        <FeatureSection
+          title="Analytics & Live Sessions"
+          subtitle="Monitor active sessions, view results, and analyze performance"
+          features={analyticsAndMonitoringFeatures}
+          onNavigate={handleNavigation}
+          sectionKey="analytics"
+        />
 
-        {/* 4. SYSTEM & CONFIGURATION SECTION */}
-        {systemConfigFeatures.length > 0 && (
-          <>
-            <Row className="mb-3">
-              <Col>
-                <h4 className="h5 text-muted mb-0">System & Configuration</h4>
-                <small className="text-muted">Platform settings, system administration, and configuration</small>
-              </Col>
-            </Row>
-            <Row className="g-3 mb-4">
-              {systemConfigFeatures.map((feature, index) => (
-                <Col key={`system-${feature.title}-${index}`} md={6} lg={4}>
-                  <FeatureCard
-                    feature={feature}
-                    onClick={handleNavigation}
-                  />
-                </Col>
-              ))}
-            </Row>
-          </>
-        )}
+        {/* 5. SYSTEM & CONFIGURATION SECTION */}
+        <FeatureSection
+          title="System & Configuration"
+          subtitle="Platform settings, system administration, and configuration"
+          features={systemConfigFeatures}
+          onNavigate={handleNavigation}
+          sectionKey="system"
+        />
 
         {/* Quick Actions */}
         <QuickActions

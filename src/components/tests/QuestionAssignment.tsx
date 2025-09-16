@@ -1,34 +1,35 @@
-// src/components/tests/QuestionAssignment.tsx - Updated to use QuestionBrowser
+// src/components/tests/QuestionAssignment.tsx - Updated with pagination
 
-import React, { useState, useEffect, useMemo } from 'react';
-import {
-    Row,
-    Col,
-    Button,
-    Card,
-    CardBody,
-    Progress,
-    Badge
-} from 'reactstrap';
 import {
     ArrowLeft,
     ArrowRight,
-    Target,
-    RefreshCw,
+    ChevronLeft,
+    ChevronRight,
+    ExternalLink,
     Plus,
-    ExternalLink
+    RefreshCw,
+    Target
 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import {
+    Button,
+    Card,
+    CardBody,
+    Col,
+    Pagination,
+    PaginationItem,
+    PaginationLink,
+    Progress,
+    Row
+} from 'reactstrap';
 import apiService from '../../services/ApiService';
-import QuestionBrowser from './QuestionBrowser';
-import type { WizardStepProps, CreateTestData, TestQuestionReference } from '../../types';
 import type {
-    Question,
-    QuestionType,
     Difficulty,
-    Language,
-    Tags,
-    QuestionCategory
+    Language, Question, QuestionCategory, QuestionType, Tags, TestQuestionReference, WizardStepProps
 } from '../../types';
+import QuestionBrowser from './QuestionBrowser';
+
+const ITEMS_PER_PAGE = 20;
 
 const QuestionAssignment: React.FC<WizardStepProps> = ({
     testData,
@@ -40,6 +41,11 @@ const QuestionAssignment: React.FC<WizardStepProps> = ({
     const [questions, setQuestions] = useState<Question[]>([]);
     const [loading, setLoading] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
+    
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalQuestions, setTotalQuestions] = useState(0);
+    const [totalPages, setTotalPages] = useState(0);
 
     // Question filtering states
     const [searchTerm, setSearchTerm] = useState('');
@@ -50,18 +56,45 @@ const QuestionAssignment: React.FC<WizardStepProps> = ({
     const [filterTag, setFilterTag] = useState<Tags | ''>('');
     const [selectedSectionIndex, setSelectedSectionIndex] = useState<number>(0);
 
-    // Load questions when filters change
+    // Debounced search term
+    const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+
+    // Debounce search term
     useEffect(() => {
-        fetchQuestions();
+        const timer = setTimeout(() => {
+            setDebouncedSearchTerm(searchTerm);
+        }, 500);
+
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
+
+    // Reset page when filters change
+    useEffect(() => {
+        setCurrentPage(1);
     }, [
         testData.languages,
         testData.tags,
-        searchTerm,
+        debouncedSearchTerm,
         filterType,
         filterDifficulty,
         filterLanguage,
         filterCategory,
         filterTag
+    ]);
+
+    // Load questions when filters or page changes
+    useEffect(() => {
+        fetchQuestions();
+    }, [
+        testData.languages,
+        testData.tags,
+        debouncedSearchTerm,
+        filterType,
+        filterDifficulty,
+        filterLanguage,
+        filterCategory,
+        filterTag,
+        currentPage
     ]);
 
     const fetchQuestions = async (isRefresh = false) => {
@@ -72,9 +105,12 @@ const QuestionAssignment: React.FC<WizardStepProps> = ({
                 setLoading(true);
             }
 
+            const skip = (currentPage - 1) * ITEMS_PER_PAGE;
             const params: Record<string, string | number | boolean> = {
                 status: 'active',
-                limit: 200
+                limit: ITEMS_PER_PAGE,
+                skip,
+                includeTotalCount: true
             };
 
             // Build query parameters
@@ -90,21 +126,18 @@ const QuestionAssignment: React.FC<WizardStepProps> = ({
                 params.tag = testData.tags[0];
             }
 
-            if (searchTerm) params.search = searchTerm;
+            if (debouncedSearchTerm) params.search = debouncedSearchTerm;
             if (filterType) params.type = filterType;
             if (filterDifficulty) params.difficulty = filterDifficulty;
             if (filterCategory) params.category = filterCategory;
 
-            console.log('QuestionAssignment: Fetching questions with params:', params);
+            // With improved ApiService, always get consistent format
+            const response = await apiService.getAllQuestions(params, true);
 
-            // FIXED: getAllQuestions returns Question[] directly, no wrapper
-            const questions = await apiService.getAllQuestions(params, false);
-
-            if (!Array.isArray(questions)) {
-                throw new Error('Failed to fetch questions - invalid response format');
-            }
-
-            setQuestions(questions);
+            // Now we can safely access response.questions and pagination info
+            setQuestions(response.questions || []);
+            setTotalQuestions(response.pagination?.totalCount || 0);
+            setTotalPages(Math.ceil((response.pagination?.totalCount || 0) / ITEMS_PER_PAGE));
         } catch (error) {
             console.error('Failed to fetch questions:', error);
             setError?.(error instanceof Error ? error.message : 'Failed to load questions');
@@ -124,24 +157,41 @@ const QuestionAssignment: React.FC<WizardStepProps> = ({
         window.open(url, '_blank');
     };
 
-    // Compute filtered list
-    const filteredQuestions = useMemo(() => {
-        const term = searchTerm.trim().toLowerCase();
-        return questions.filter((q) => {
-            if (filterType && q.type !== filterType) return false;
-            if (filterDifficulty && q.difficulty !== filterDifficulty) return false;
-            if (filterLanguage && q.language !== filterLanguage) return false;
-            if (filterCategory && q.category !== filterCategory) return false;
-            if (filterTag && !(q.tags || []).includes(filterTag)) return false;
+    const handlePageChange = (page: number) => {
+        if (page < 1 || page > totalPages) return;
+        setCurrentPage(page);
+    };
 
-            if (!term) return true;
+    // Get pagination range for display
+    const getPaginationRange = () => {
+        const delta = 2;
+        const range = [];
+        const rangeWithDots = [];
 
-            const inTitle = q.title?.toLowerCase().includes(term);
-            const inDesc = q.description?.toLowerCase().includes(term);
-            const inTags = (q.tags || []).some((t) => t.toLowerCase().includes(term));
-            return inTitle || inDesc || inTags;
-        });
-    }, [questions, searchTerm, filterType, filterDifficulty, filterLanguage, filterCategory, filterTag]);
+        for (let i = Math.max(2, currentPage - delta); i <= Math.min(totalPages - 1, currentPage + delta); i++) {
+            range.push(i);
+        }
+
+        if (currentPage - delta > 2) {
+            rangeWithDots.push(1, '...');
+        } else {
+            rangeWithDots.push(1);
+        }
+
+        rangeWithDots.push(...range);
+
+        if (currentPage + delta < totalPages - 1) {
+            rangeWithDots.push('...', totalPages);
+        } else if (totalPages > 1) {
+            rangeWithDots.push(totalPages);
+        }
+
+        return rangeWithDots;
+    };
+
+    // Since we're using server-side pagination, we don't need client-side filtering
+    // All filtering is now handled by the server
+    const filteredQuestions = questions;
 
     // Question selection handlers
     const handleToggleQuestion = (questionId: string) => {
@@ -249,7 +299,7 @@ const QuestionAssignment: React.FC<WizardStepProps> = ({
     };
 
     // Helper functions for display
-    const getTotalQuestions = () => {
+    const getTotalSelectedQuestions = () => {
         if (testData.settings.useSections && testData.sections) {
             return testData.sections.reduce((total, section) => total + section.questions.length, 0);
         }
@@ -270,9 +320,9 @@ const QuestionAssignment: React.FC<WizardStepProps> = ({
     const handleNext = () => {
         setError?.(null);
 
-        const totalQuestions = getTotalQuestions();
+        const totalSelectedQuestions = getTotalSelectedQuestions();
 
-        if (totalQuestions === 0) {
+        if (totalSelectedQuestions === 0) {
             setError?.('Please add at least one question to the test');
             return;
         }
@@ -296,8 +346,8 @@ const QuestionAssignment: React.FC<WizardStepProps> = ({
                     <Row>
                         <Col md="3">
                             <div className="text-center">
-                                <h4 className="mb-1 text-primary">{getTotalQuestions()}</h4>
-                                <small className="text-muted">Total Questions</small>
+                                <h4 className="mb-1 text-primary">{getTotalSelectedQuestions()}</h4>
+                                <small className="text-muted">Selected Questions</small>
                             </div>
                         </Col>
                         <Col md="3">
@@ -316,8 +366,8 @@ const QuestionAssignment: React.FC<WizardStepProps> = ({
                         </Col>
                         <Col md="3">
                             <div className="text-center">
-                                <h4 className="mb-1 text-secondary">{questions.length}</h4>
-                                <small className="text-muted">Available</small>
+                                <h4 className="mb-1 text-secondary">{totalQuestions}</h4>
+                                <small className="text-muted">Total Available</small>
                             </div>
                         </Col>
                     </Row>
@@ -357,6 +407,9 @@ const QuestionAssignment: React.FC<WizardStepProps> = ({
                             <h6 className="mb-0">Question Library</h6>
                             <small className="text-muted">
                                 Browse and select questions for your test
+                                {totalQuestions > 0 && (
+                                    <span> - Showing {((currentPage - 1) * ITEMS_PER_PAGE) + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, totalQuestions)} of {totalQuestions}</span>
+                                )}
                             </small>
                         </Col>
                         <Col xs="auto">
@@ -410,6 +463,50 @@ const QuestionAssignment: React.FC<WizardStepProps> = ({
                 onClear={handleClearSelection}
             />
 
+            {/* Pagination */}
+            {totalPages > 1 && (
+                <Card className="mt-4">
+                    <CardBody>
+                        <div className="d-flex justify-content-center align-items-center">
+                            <Pagination className="mb-0">
+                                <PaginationItem disabled={currentPage === 1}>
+                                    <PaginationLink
+                                        onClick={() => handlePageChange(currentPage - 1)}
+                                        className="d-flex align-items-center"
+                                    >
+                                        <ChevronLeft size={16} />
+                                    </PaginationLink>
+                                </PaginationItem>
+
+                                {getPaginationRange().map((page, index) => (
+                                    <PaginationItem key={index} active={page === currentPage} disabled={page === '...'}>
+                                        <PaginationLink
+                                            onClick={() => typeof page === 'number' && handlePageChange(page)}
+                                            style={{ cursor: page === '...' ? 'default' : 'pointer' }}
+                                        >
+                                            {page}
+                                        </PaginationLink>
+                                    </PaginationItem>
+                                ))}
+
+                                <PaginationItem disabled={currentPage === totalPages}>
+                                    <PaginationLink
+                                        onClick={() => handlePageChange(currentPage + 1)}
+                                        className="d-flex align-items-center"
+                                    >
+                                        <ChevronRight size={16} />
+                                    </PaginationLink>
+                                </PaginationItem>
+                            </Pagination>
+
+                            <div className="ms-3 text-muted small">
+                                Page {currentPage} of {totalPages}
+                            </div>
+                        </div>
+                    </CardBody>
+                </Card>
+            )}
+
             {/* Navigation */}
             <div className="d-flex justify-content-between pt-3 border-top">
                 <Button color="secondary" onClick={onPrevious} className="d-flex align-items-center">
@@ -420,12 +517,23 @@ const QuestionAssignment: React.FC<WizardStepProps> = ({
                     color="primary"
                     onClick={handleNext}
                     className="d-flex align-items-center"
-                    disabled={getTotalQuestions() === 0}
+                    disabled={getTotalSelectedQuestions() === 0}
                 >
                     Next: Review & Publish
                     <ArrowRight size={16} className="ms-1" />
                 </Button>
             </div>
+
+            {/* Styles */}
+            <style>{`
+                .rotating {
+                    animation: spin 1s linear infinite;
+                }
+                @keyframes spin {
+                    from { transform: rotate(0deg); }
+                    to { transform: rotate(360deg); }
+                }
+            `}</style>
         </div>
     );
 };

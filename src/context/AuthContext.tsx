@@ -99,7 +99,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     const checkAuthStatus = async () => {
       try {
-        console.log('AuthContext: Checking auth status...');
         setState((prev) => ({ ...prev, loading: true }));
 
         // FIXED: Server returns direct response, no wrapper
@@ -108,17 +107,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (!mounted) return;
 
         if (response.success && response.user) {
-          console.log('AuthContext: User authenticated:', response.user.loginId);
-          console.log('AuthContext: Organization populated:', !!response.user.organization);
           setAuthenticated(response.user);
         } else {
-          console.log('AuthContext: No valid session');
           setUnauthenticated();
         }
       } catch (error) {
         if (!mounted) return;
-
-        console.log('AuthContext: Auth check failed (expected if not logged in)');
         setUnauthenticated();
       }
     };
@@ -145,17 +139,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return;
       }
 
-      console.log('Login successful, basic user data received');
-
       // Step 2: Get fully populated user data (includes organization)
       const fullUser = await getFullUserData();
 
       if (fullUser) {
-        console.log('Full user data retrieved with organization:', !!fullUser.organization);
         setAuthenticated(fullUser);
       } else {
         // Fallback to basic user data if getCurrentUser fails
-        console.log('Using basic user data as fallback');
         setAuthenticated(response.user);
       }
 
@@ -201,17 +191,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           return;
         }
 
-        console.log('Registration successful, basic user data received');
-
         // Step 2: Get fully populated user data (includes organization)
         const fullUser = await getFullUserData();
 
         if (fullUser) {
-          console.log('Full user data retrieved with organization:', !!fullUser.organization);
           setAuthenticated(fullUser);
         } else {
           // Fallback to basic user data if getCurrentUser fails
-          console.log('Using basic user data as fallback');
           setAuthenticated(response.user);
         }
 

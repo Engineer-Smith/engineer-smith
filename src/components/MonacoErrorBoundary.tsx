@@ -1,7 +1,7 @@
-import React, { Component, Suspense } from 'react';
-import type  { ErrorInfo, ReactNode } from 'react';
-import { Alert, Spinner } from 'reactstrap';
 import { AlertTriangle } from 'lucide-react';
+import type { ErrorInfo, ReactNode } from 'react';
+import { Component, Suspense } from 'react';
+import { Alert, Spinner } from 'reactstrap';
 
 interface Props {
   children: ReactNode;

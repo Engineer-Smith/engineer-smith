@@ -1,11 +1,9 @@
 // src/types/result.ts - CORRECTED to match actual backend Result.js model
 import type {
-  SessionStatus,
-  QuestionType,
-  Language,
-  Role,
-  Tags,
   BaseEntity,
+  Language,
+  QuestionType,
+  SessionStatus,
   Timestamped
 } from './common';
 
@@ -27,6 +25,36 @@ export interface Result extends BaseEntity, Timestamped {
   timeSpent: number; // Seconds
   questions: ResultQuestion[];
   score: ResultScore;
+
+  // ✅ ADDED: Manual scoring tracking fields (from your updated MongoDB model)
+  lastModified?: string; // Date
+  modifiedBy?: string; // ObjectId reference to User
+  scoreOverridden?: boolean;
+  overrideReason?: string;
+  instructorFeedback?: string; // This is the field causing your error
+  manualReviewRequired?: boolean;
+}
+
+/**
+ * Populated Result - when backend returns populated testId, userId, organizationId
+ */
+export interface PopulatedResult extends Omit<Result, 'testId' | 'userId' | 'organizationId'> {
+  testId: {
+    _id: string;
+    title: string;
+    description: string;
+  };
+  userId: {
+    _id: string;
+    loginId: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+  };
+  organizationId: {
+    _id: string;
+    name: string;
+  };
 }
 
 /**
@@ -60,6 +88,11 @@ export interface ResultQuestion {
   // Timing and engagement
   timeSpent?: number; // Seconds spent on this question
   viewCount?: number; // How many times they viewed this question
+
+  manuallyGraded?: boolean;
+  gradedBy?: string; // ObjectId reference to User
+  gradedAt?: string; // Date
+  feedback?: string; // Individual question feedback
 
   // Type-specific details - MATCHES your MongoDB structure exactly
   details?: {
@@ -445,6 +478,13 @@ export const isPaginatedResponse = <T>(
   response: T[] | PaginatedAnalyticsResponse<T>
 ): response is PaginatedAnalyticsResponse<T> => {
   return typeof response === 'object' && 'data' in response;
+};
+
+/**
+ * Type guard to check if result is populated
+ */
+export const isPopulatedResult = (result: Result | PopulatedResult): result is PopulatedResult => {
+  return typeof (result as PopulatedResult).testId === 'object';
 };
 
 // =====================

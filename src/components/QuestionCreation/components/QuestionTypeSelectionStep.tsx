@@ -1,6 +1,6 @@
-// src/components/QuestionCreation/components/QuestionTypeSelectionStep.tsx - SIMPLIFIED
+// src/components/QuestionCreation/components/QuestionTypeSelectionStep.tsx - UPDATED
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Row, Col, Card, CardBody, Badge, Button, Alert } from 'reactstrap';
 import { 
   ArrowLeft, 
@@ -10,14 +10,12 @@ import {
   List,
   CheckSquare,
   Code,
-  AlertTriangle,
-  Info
+  AlertTriangle
 } from 'lucide-react';
 import { 
-  getAllowedQuestionTypesForCategory,
-  getRestrictedQuestionTypesForCategory,
-  validateQuestionTypeCategory
-} from '../../../utils/questionBusinessRules';
+  getAllowedQuestionTypes,
+  isValidQuestionTypeForLanguageAndCategory
+} from '../../../types';
 import type { QuestionCategory, QuestionType, Language } from '../../../types';
 
 interface QuestionTypeOption {
@@ -47,10 +45,6 @@ const QuestionTypeSelectionStep: React.FC<QuestionTypeSelectionStepProps> = ({
   onQuestionTypeSelect,
   onResetToCategory
 }) => {
-
-  // Get business rules for this category
-  const allowedTypes = getAllowedQuestionTypesForCategory(selectedCategory);
-  const restrictedInfo = getRestrictedQuestionTypesForCategory(selectedCategory);
 
   const questionTypeOptions: QuestionTypeOption[] = [
     {
@@ -100,30 +94,44 @@ const QuestionTypeSelectionStep: React.FC<QuestionTypeSelectionStepProps> = ({
     }
   ];
 
-  // Get available types (non-restricted)
-  const getAvailableQuestionTypes = (): QuestionTypeOption[] => {
+  // Get allowed types using the new validation system
+  const allowedTypes = useMemo(() => {
+    return getAllowedQuestionTypes(selectedLanguage, selectedCategory);
+  }, [selectedLanguage, selectedCategory]);
+
+  // Get available options (those that are allowed)
+  const availableOptions = useMemo(() => {
     return questionTypeOptions.filter(option => 
       allowedTypes.includes(option.value)
     );
-  };
+  }, [questionTypeOptions, allowedTypes]);
 
-  // Get restricted types with reasons
-  const getRestrictedQuestionTypes = (): QuestionTypeOption[] => {
+  // Get restricted options (those that are not allowed)
+  const restrictedOptions = useMemo(() => {
     return questionTypeOptions.filter(option => 
-      restrictedInfo.types.includes(option.value)
+      !allowedTypes.includes(option.value)
     );
-  };
+  }, [questionTypeOptions, allowedTypes]);
 
-  const availableTypes = getAvailableQuestionTypes();
-  const restrictedTypes = getRestrictedQuestionTypes();
+  // Get restriction reason based on language and category
+  const getRestrictionReason = () => {
+    if (selectedCategory === 'ui') {
+      return `UI questions for ${languageLabel} should focus on visual components and layouts. Use Fill-in-the-Blank for code completion exercises.`;
+    }
+    if (selectedCategory === 'logic') {
+      return `Logic questions for ${languageLabel} require algorithmic problem-solving. Use Code Challenge or Code Debugging for computational problems.`;
+    }
+    if (selectedCategory === 'syntax') {
+      return `Syntax questions test language-specific knowledge. Multiple choice and Fill-in-the-Blank work well for syntax concepts.`;
+    }
+    return `Some question types are not suitable for ${languageLabel} ${categoryLabel} questions.`;
+  };
 
   // Handle type selection with validation
   const handleTypeSelection = (type: QuestionType) => {
-    const violations = validateQuestionTypeCategory(type, selectedCategory);
-    
-    if (violations.some(v => v.severity === 'error')) {
-      // Don't allow selection of error-level violations
-      console.warn('Cannot select question type due to business rule violations:', violations);
+    // Double-check validation before selection
+    if (!isValidQuestionTypeForLanguageAndCategory(type, selectedLanguage, selectedCategory)) {
+      console.warn(`Invalid selection: ${type} not allowed for ${selectedLanguage} ${selectedCategory}`);
       return;
     }
     
@@ -154,76 +162,88 @@ const QuestionTypeSelectionStep: React.FC<QuestionTypeSelectionStepProps> = ({
 
       {/* Available question types */}
       <h5 className="mb-3">Choose Question Type</h5>
-      <Row className="g-3 mb-4">
-        {availableTypes.map((option) => {
-          const IconComponent = option.icon;
-          
-          return (
-            <Col md={6} lg={4} key={option.value}>
-              <Card 
-                className="question-type-card h-100 border-hover"
-                style={{ cursor: 'pointer', transition: 'all 0.2s' }}
-                onClick={() => handleTypeSelection(option.value)}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                  e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.1)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = '';
-                }}
-              >
-                <CardBody className="text-center p-4">
-                  <div 
-                    className={`icon-circle mx-auto mb-3 d-flex align-items-center justify-content-center`}
-                    style={{ 
-                      width: '60px', 
-                      height: '60px',
-                      borderRadius: '50%',
-                      backgroundColor: `var(--bs-${option.color})`,
-                      color: 'white'
-                    }}
-                  >
-                    <IconComponent size={28} />
-                  </div>
-                  
-                  <h6 className="mb-2">{option.label}</h6>
-                  <p className="text-muted small mb-3">{option.description}</p>
-                  
-                  <div className="d-flex justify-content-between align-items-center">
-                    <Badge color="light" className="text-muted">
-                      {option.difficulty}
-                    </Badge>
-                    <Badge color="success" outline>
-                      Auto-gradeable
-                    </Badge>
-                  </div>
-                </CardBody>
-              </Card>
-            </Col>
-          );
-        })}
-      </Row>
+      
+      {availableOptions.length > 0 ? (
+        <Row className="g-3 mb-4">
+          {availableOptions.map((option) => {
+            const IconComponent = option.icon;
+            
+            return (
+              <Col md={6} lg={4} key={option.value}>
+                <Card 
+                  className="question-type-card h-100 border-hover"
+                  style={{ cursor: 'pointer', transition: 'all 0.2s' }}
+                  onClick={() => handleTypeSelection(option.value)}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.1)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '';
+                  }}
+                >
+                  <CardBody className="text-center p-4">
+                    <div 
+                      className={`icon-circle mx-auto mb-3 d-flex align-items-center justify-content-center`}
+                      style={{ 
+                        width: '60px', 
+                        height: '60px',
+                        borderRadius: '50%',
+                        backgroundColor: `var(--bs-${option.color})`,
+                        color: 'white'
+                      }}
+                    >
+                      <IconComponent size={28} />
+                    </div>
+                    
+                    <h6 className="mb-2">{option.label}</h6>
+                    <p className="text-muted small mb-3">{option.description}</p>
+                    
+                    <div className="d-flex justify-content-between align-items-center">
+                      <Badge color="light" className="text-muted">
+                        {option.difficulty}
+                      </Badge>
+                      <Badge color="success" outline>
+                        Auto-gradeable
+                      </Badge>
+                    </div>
+                  </CardBody>
+                </Card>
+              </Col>
+            );
+          })}
+        </Row>
+      ) : (
+        <Alert color="danger" className="mb-4">
+          <AlertTriangle size={16} className="me-2" />
+          <strong>No question types available</strong>
+          <p className="mb-0">
+            The combination of {languageLabel} and {categoryLabel} doesn't support any question types. 
+            Please select a different category.
+          </p>
+        </Alert>
+      )}
 
-      {/* Restricted types warning (if any) */}
-      {restrictedTypes.length > 0 && (
-        <Alert color="warning" className="mb-4">
+      {/* Restricted types info (if any) */}
+      {restrictedOptions.length > 0 && availableOptions.length > 0 && (
+        <Alert color="info" className="mb-4">
           <div className="d-flex">
             <AlertTriangle size={16} className="me-2 mt-1 flex-shrink-0" />
             <div>
-              <strong>Not Available for {categoryLabel} Questions</strong>
-              <p className="mb-2">{restrictedInfo.reason}</p>
+              <strong>Not Available for {languageLabel} {categoryLabel} Questions</strong>
+              <p className="mb-2">{getRestrictionReason()}</p>
               
               <div className="d-flex flex-wrap gap-2">
-                {restrictedTypes.map((option) => {
+                {restrictedOptions.map((option) => {
                   const IconComponent = option.icon;
                   
                   return (
                     <Badge 
                       key={option.value}
-                      color="warning" 
+                      color="secondary" 
                       className="d-flex align-items-center gap-1 p-2"
-                      style={{ fontSize: '0.75rem' }}
+                      style={{ fontSize: '0.75rem', opacity: 0.7 }}
                     >
                       <IconComponent size={14} />
                       {option.label}
@@ -235,6 +255,13 @@ const QuestionTypeSelectionStep: React.FC<QuestionTypeSelectionStepProps> = ({
           </div>
         </Alert>
       )}
+
+      {/* Help text */}
+      <div className="text-muted small">
+        <p className="mb-0">
+          Available types: <strong>{allowedTypes.join(', ')}</strong>
+        </p>
+      </div>
     </div>
   );
 };

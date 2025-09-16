@@ -40,16 +40,8 @@ const TestPreviewPage: React.FC = () => {
             setLoading(true);
             setError(null);
 
-            console.log('TestPreviewPage: Fetching test with questions for ID:', testId);
-            console.log('TestPreviewPage: User role:', user?.role);
-
             // FIXED: getTestWithQuestions returns Test directly, no wrapper
             const test = await apiService.getTestWithQuestions(testId);
-
-            console.log('TestPreviewPage: Test data received:', test);
-            console.log('TestPreviewPage: Test has sections?', test?.settings?.useSections);
-            console.log('TestPreviewPage: Sections:', test?.sections);
-            console.log('TestPreviewPage: Questions:', test?.questions);
 
             if (!test || !test._id) {
                 throw new Error('No test data received');

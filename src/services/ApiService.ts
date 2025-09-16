@@ -2,30 +2,49 @@
 // src/services/ApiService.ts - UPDATED for server-driven architecture
 // =====================================================
 
-import axios from 'axios';
 import type { AxiosInstance } from 'axios';
+import axios from 'axios';
 import type {
-  User,
+  CheckExistingSessionResponse,
+  CurrentQuestionResponse,
   Question,
-  Test,
-  TestSession,
+  QuestionTestResult,
+  RejoinSessionResponse,
   Result,
   ResultAnalytics,
-  UserAnalytics,
   SectionAnalytics,
-  QuestionTestResult,
   // NEW: Server-driven types
   ServerActionResponse,
-  SubmitAnswerRequest,
+  StartSessionConflictResponse,
   StartSessionResponse,
-  CurrentQuestionResponse,
-  CheckExistingSessionResponse,
-  RejoinSessionResponse,
-  StartSessionConflictResponse
+  SubmitAnswerRequest,
+  Test,
+  TestSession,
+  User,
+  UserAnalytics,
+  UserDetailsDashboard,
+  UserManagementDashboard
 } from '../types/';
+
+
+
+import type { PopulatedSession } from '../pages/LiveSessionMonitor';
+import type { PopulatedResult } from '../types/result';
+
+import type { StudentDashboard } from '../types/student';
 
 interface Params {
   [key: string]: string | number | boolean | undefined;
+}
+
+interface QuestionsResponse {
+  questions: Question[];
+  pagination: {
+    skip: number;
+    limit: number;
+    total: number;
+    totalCount?: number;
+  };
 }
 
 // =====================================================
@@ -50,14 +69,12 @@ class ApiService {
       (response) => response,
       async (error) => {
         if (error.config.url?.includes('/auth/me')) {
-          console.log('ApiService: Skipping token refresh for /auth/me');
           return Promise.reject(error);
         }
 
         if (error.response?.status === 401 && !error.config._retry) {
           error.config._retry = true;
           try {
-            console.log('ApiService: Attempting token refresh...');
             const refreshResponse = await axios.post(
               `${this.client.defaults.baseURL}/auth/refresh-token`,
               {},
@@ -65,7 +82,6 @@ class ApiService {
             );
 
             if (refreshResponse.status === 200) {
-              console.log('ApiService: Token refresh successful');
               if (refreshResponse.data.csrfToken) {
                 document.cookie = `csrfToken=${refreshResponse.data.csrfToken}; path=/; SameSite=Strict; ${import.meta.env.VITE_NODE_ENV === 'production' ? 'Secure' : ''}`;
               }
@@ -133,9 +149,9 @@ class ApiService {
   }
 
   async validateInviteCode(data: { inviteCode: string }): Promise<{ success: boolean; organization: { _id: string; name: string } }> {
-  const response = await this.client.post('/auth/validate-invite', data);
-  return response.data;
-}
+    const response = await this.client.post('/auth/validate-invite', data);
+    return response.data;
+  }
 
   getSSOLoginUrl(): string {
     return `${this.client.defaults.baseURL}/auth/login/sso`;
@@ -179,7 +195,6 @@ class ApiService {
   // =====================================================
 
   async createQuestion(data: Partial<Question>, params: Params = {}): Promise<Question> {
-    console.log('ApiService: createQuestion data:', JSON.stringify(data, null, 2));
     const response = await this.client.post('/api/questions', data, {
       params,
       headers: this.getCsrfHeaders(),
@@ -255,17 +270,43 @@ class ApiService {
     return response.data;
   }
 
-  async getAllQuestions(params: Params = {}, includeTotalCount: boolean = false): Promise<Question[] | {
-    questions: Question[];
-    totalCount: number;
-    totalPages: number;
-  }> {
+  async getAllQuestions(
+    params: Params = {},
+    includeTotalCount: boolean = false
+  ): Promise<QuestionsResponse> {
     const queryParams = {
       ...params,
       ...(includeTotalCount && { includeTotalCount: 'true' })
     };
+
     const response = await this.client.get('/api/questions', { params: queryParams });
-    return response.data || [];
+    const data = response.data || {};
+
+    // Always return consistent format
+    if (includeTotalCount) {
+      // Backend returns the structured format
+      return {
+        questions: data.questions || [],
+        pagination: {
+          skip: data.pagination?.skip || 0,
+          limit: data.pagination?.limit || 10,
+          total: data.pagination?.total || 0,
+          totalCount: data.pagination?.totalCount || 0
+        }
+      };
+    } else {
+      // Backend returns array - wrap it in consistent format
+      const questions = Array.isArray(data) ? data : (data.questions || []);
+      return {
+        questions,
+        pagination: {
+          skip: parseInt(params.skip as string) || 0,
+          limit: parseInt(params.limit as string) || 10,
+          total: questions.length,
+          totalCount: questions.length
+        }
+      };
+    }
   }
 
   async getPaginatedQuestions(params: Params = {}): Promise<{
@@ -273,10 +314,11 @@ class ApiService {
     totalCount: number;
     totalPages: number;
   }> {
-    return await this.getAllQuestions(params, true) as {
-      questions: Question[];
-      totalCount: number;
-      totalPages: number;
+    const response = await this.getAllQuestions(params, true);
+    return {
+      questions: response.questions,
+      totalCount: response.pagination.totalCount || 0,
+      totalPages: Math.ceil((response.pagination.totalCount || 0) / (response.pagination.limit || 10))
     };
   }
 
@@ -291,6 +333,12 @@ class ApiService {
     const response = await this.client.delete(`/api/questions/${questionId}`, {
       headers: this.getCsrfHeaders(),
     });
+    return response.data;
+  }
+
+  async getPopulatedTestSessions(params: any): Promise<PopulatedSession[]> {
+    // This should call an endpoint that returns populated data
+    const response = await this.client.get('/api/test-sessions', { params });
     return response.data;
   }
 
@@ -505,7 +553,7 @@ class ApiService {
     return response.data;
   }
 
-  async getAllResults(params: Params = {}): Promise<Result[]> {
+  async getAllResults(params: Params = {}): Promise<PopulatedResult[]> {
     const response = await this.client.get('/api/results', { params });
     return response.data || [];
   }
@@ -547,16 +595,21 @@ class ApiService {
   // =====================================================
 
   async getTags(languages?: string[]): Promise<{
-    tagsByLanguage: Record<string, string[]>;
-    tagMetadata: Record<string, { label: string; description: string; color?: string }>;
-    allTags: string[];
-  } | {
-    applicableTags: string[];
-    tagMetadata: Record<string, { label: string; description: string; color?: string }>;
+    success: boolean;
+    error?: boolean;
+    message?: string;
+    data: {
+      tagsByLanguage: Record<string, string[]>;
+      tagMetadata: Record<string, { label: string; description: string; color?: string }>;
+      allTags: string[];
+    } | {
+      applicableTags: string[];
+      tagMetadata: Record<string, { label: string; description: string; color?: string }>;
+    };
   }> {
     const params = languages ? { languages: languages.join(',') } : {};
     const response = await this.client.get('/api/tags', { params });
-    return response.data.data;
+    return response.data; // Return the full response
   }
 
   async getTagsForLanguage(language: string): Promise<{
@@ -594,6 +647,504 @@ class ApiService {
     const params = tags ? { tags: tags.join(',') } : {};
     const response = await this.client.get('/api/tags/metadata', { params });
     return response.data.metadata;
+  }
+
+
+  // =====================================================
+  // ADMIN DASHBOARD APIS - NEW SECTION
+  // =====================================================
+
+  async getUserDashboard(params: Params = {}): Promise<UserManagementDashboard> {
+    const response = await this.client.get('/api/admin/users/dashboard', { params });
+    return response.data;
+  }
+
+  async getUserDetailsDashboard(userId: string): Promise<UserDetailsDashboard> {
+    const response = await this.client.get(`/api/admin/users/${userId}/dashboard`);
+    return response.data;
+  }
+
+  // Additional admin user management methods
+  async updateUserRole(userId: string, role: string): Promise<User> {
+    const response = await this.client.patch(`/api/admin/users/${userId}/role`, { role }, {
+      headers: this.getCsrfHeaders(),
+    });
+    return response.data;
+  }
+
+  async transferUserOrganization(userId: string, organizationId: string): Promise<User> {
+    const response = await this.client.patch(`/api/admin/users/${userId}/organization`, { organizationId }, {
+      headers: this.getCsrfHeaders(),
+    });
+    return response.data;
+  }
+
+  async resetUserPassword(userId: string): Promise<{ tempPassword: string }> {
+    const response = await this.client.post(`/api/admin/users/${userId}/reset-password`, {}, {
+      headers: this.getCsrfHeaders(),
+    });
+    return response.data;
+  }
+
+  async bulkUpdateUsers(action: {
+    type: 'delete' | 'changeRole' | 'transferOrganization' | 'export';
+    userIds: string[];
+    payload?: Record<string, any>;
+  }): Promise<{ success: number; failed: number }> {
+    const response = await this.client.post('/api/admin/users/bulk', action, {
+      headers: this.getCsrfHeaders(),
+    });
+    return response.data;
+  }
+
+  async exportUsers(options: {
+    format: 'csv' | 'xlsx' | 'pdf';
+    includePerformanceData: boolean;
+    includeActivityLog: boolean;
+    dateRange?: { start: string; end: string };
+    userIds?: string[];
+  }): Promise<{ downloadUrl: string }> {
+    const response = await this.client.post('/api/admin/users/export', options, {
+      headers: this.getCsrfHeaders(),
+    });
+    return response.data;
+  }
+
+  /**
+ * Submit an attempt request via HTTP
+ */
+  async submitAttemptRequest(data: {
+    testId: string;
+    requestedAttempts: number;
+    reason: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    requestId: string;
+  }> {
+    const response = await this.client.post('/api/attempt-requests', data, {
+      headers: this.getCsrfHeaders(),
+    });
+    return response.data;
+  }
+
+  /**
+   * Review an attempt request (instructor/admin only)
+   */
+  async reviewAttemptRequest(
+    requestId: string,
+    data: {
+      decision: 'approved' | 'rejected';
+      reviewNotes?: string;
+    }
+  ): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    const response = await this.client.patch(`/api/attempt-requests/${requestId}/review`, data, {
+      headers: this.getCsrfHeaders(),
+    });
+    return response.data;
+  }
+
+  /**
+   * Get pending attempt requests (for instructors/admins)
+   */
+  async getPendingAttemptRequests(): Promise<Array<{
+    _id: string;
+    userId: string;
+    testId: string;
+    organizationId: string;
+    requestedAttempts: number;
+    reason: string;
+    status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+    createdAt: string;
+    updatedAt: string;
+    user?: {
+      _id: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      fullName: string;
+    };
+    test?: {
+      _id: string;
+      title: string;
+      description: string;
+    };
+  }>> {
+    const response = await this.client.get('/api/attempt-requests/pending');
+    return response.data || [];
+  }
+
+  /**
+   * Get user's own attempt requests
+   */
+  async getUserAttemptRequests(): Promise<Array<{
+    _id: string;
+    userId: string;
+    testId: string;
+    organizationId: string;
+    requestedAttempts: number;
+    reason: string;
+    status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+    reviewedBy?: string;
+    reviewedAt?: string;
+    reviewNotes?: string;
+    createdAt: string;
+    updatedAt: string;
+    test?: {
+      _id: string;
+      title: string;
+      description: string;
+    };
+    reviewer?: {
+      _id: string;
+      firstName: string;
+      lastName: string;
+      fullName: string;
+    };
+  }>> {
+    const response = await this.client.get('/api/attempt-requests/my-requests');
+    return response.data || [];
+  }
+
+  /**
+   * Get specific attempt request details
+   */
+  async getAttemptRequest(requestId: string): Promise<{
+    _id: string;
+    userId: string;
+    testId: string;
+    organizationId: string;
+    requestedAttempts: number;
+    reason: string;
+    status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+    reviewedBy?: string;
+    reviewedAt?: string;
+    reviewNotes?: string;
+    createdAt: string;
+    updatedAt: string;
+    user?: {
+      _id: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+    };
+    test?: {
+      _id: string;
+      title: string;
+      description: string;
+    };
+    reviewer?: {
+      _id: string;
+      firstName: string;
+      lastName: string;
+    };
+  }> {
+    const response = await this.client.get(`/api/attempt-requests/${requestId}`);
+    return response.data;
+  }
+
+  /**
+  * Grant attempts directly (admin/instructor only)
+  */
+  async grantAttemptsDirectly(data: {
+    userId: string;
+    testId: string;
+    extraAttempts: number;
+    reason: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    override?: {
+      _id: string;
+      userId: string;
+      testId: string;
+      organizationId: string;
+      extraAttempts: number;
+      reason: string;
+      grantedBy: string;
+      grantedAt: string;
+      expiresAt?: string;
+    };
+  }> {
+    // FIXED: Use the correct endpoint that matches your server.js mounting
+    const response = await this.client.post('/api/student-overrides/grant-attempts', data, {
+      headers: this.getCsrfHeaders(),
+    });
+    return response.data;
+  }
+
+  /**
+   * Get all overrides for organization
+   */
+  async getStudentOverrides(params?: {
+    testId?: string;
+    userId?: string;
+  }): Promise<Array<{
+    _id: string;
+    userId: string;
+    testId: string;
+    organizationId: string;
+    extraAttempts: number;
+    reason: string;
+    grantedBy: string;
+    grantedAt: string;
+    expiresAt?: string;
+    user?: {
+      _id: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      fullName: string;
+    };
+    test?: {
+      _id: string;
+      title: string;
+    };
+    granter?: {
+      _id: string;
+      firstName: string;
+      lastName: string;
+      fullName: string;
+    };
+  }>> {
+    const searchParams = new URLSearchParams();
+    if (params?.testId) searchParams.append('testId', params.testId);
+    if (params?.userId) searchParams.append('userId', params.userId);
+
+    const query = searchParams.toString();
+    const endpoint = `/api/student-overrides/overrides${query ? `?${query}` : ''}`;
+
+    const response = await this.client.get(endpoint);
+    return response.data || [];
+  }
+
+  /**
+   * Update an existing override
+   */
+  async updateStudentOverride(
+    overrideId: string,
+    data: { extraAttempts: number; reason: string }
+  ): Promise<{
+    success: boolean;
+    message: string;
+    override?: any;
+  }> {
+    const response = await this.client.patch(`/api/student-overrides/overrides/${overrideId}`, data, {
+      headers: this.getCsrfHeaders(),
+    });
+    return response.data;
+  }
+
+  /**
+   * Delete an override
+   */
+  async deleteStudentOverride(overrideId: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    const response = await this.client.delete(`/api/student-overrides/overrides/${overrideId}`, {
+      headers: this.getCsrfHeaders(),
+    });
+    return response.data;
+  }
+
+  /**
+   * Get attempt status for a specific student/test combination
+   */
+  async getAttemptStatus(testId: string, userId: string): Promise<{
+    student: {
+      id: string;
+      name: string;
+      email: string;
+    };
+    test: {
+      id: string;
+      title: string;
+      baseAttempts: number;
+    };
+    attempts: {
+      total: number;
+      used: number;
+      remaining: number;
+    };
+    override?: {
+      extraAttempts: number;
+      reason: string;
+      grantedBy: string;
+      grantedAt: string;
+    };
+  }> {
+    const response = await this.client.get(`/api/student-overrides/status/${testId}/${userId}`);
+    return response.data;
+  }
+
+  /**
+   * Check if user can submit attempt request for a test
+   */
+  async canSubmitAttemptRequest(testId: string): Promise<{
+    canSubmit: boolean;
+    reason?: string;
+    remainingAttempts?: number;
+    hasPendingRequest?: boolean;
+  }> {
+    const response = await this.client.get(`/api/attempt-requests/can-submit/${testId}`);
+    return response.data;
+  }
+
+  /**
+   * Get test attempt summary for a user
+   */
+  async getTestAttemptSummary(testId: string): Promise<{
+    test: {
+      id: string;
+      title: string;
+      baseAttempts: number;
+    };
+    attempts: {
+      total: number;
+      used: number;
+      remaining: number;
+    };
+    hasOverride: boolean;
+    hasPendingRequest: boolean;
+    canTakeTest: boolean;
+  }> {
+    const response = await this.client.get(`/api/tests/${testId}/attempt-summary`);
+    return response.data;
+  }
+
+  // =====================================================
+  // NOTIFICATION API METHODS (HTTP fallback for socket)
+  // =====================================================
+
+  /**
+   * Get user's notifications
+   */
+  async getNotifications(params?: {
+    limit?: number;
+    page?: number;
+  }): Promise<{
+    notifications: Array<{
+      _id: string;
+      recipientId: string;
+      senderId?: string;
+      organizationId: string;
+      type: string;
+      title: string;
+      message: string;
+      relatedModel?: string;
+      relatedId?: string;
+      actionUrl?: string;
+      actionText?: string;
+      isRead: boolean;
+      readAt?: string;
+      createdAt: string;
+      updatedAt: string;
+      sender?: {
+        _id: string;
+        firstName: string;
+        lastName: string;
+      };
+    }>;
+    pagination: {
+      current: number;
+      total: number;
+      hasNext: boolean;
+    };
+  }> {
+    const searchParams = new URLSearchParams();
+    if (params?.limit) searchParams.append('limit', params.limit.toString());
+    if (params?.page) searchParams.append('page', params.page.toString());
+
+    const query = searchParams.toString();
+    const endpoint = `/api/notifications${query ? `?${query}` : ''}`;
+
+    const response = await this.client.get(endpoint);
+    return response.data;
+  }
+
+  /**
+   * Mark notification as read via HTTP
+   */
+  async markNotificationAsRead(notificationId: string): Promise<{
+    success: boolean;
+  }> {
+    const response = await this.client.patch(`/api/notifications/${notificationId}/read`, {}, {
+      headers: this.getCsrfHeaders(),
+    });
+    return response.data;
+  }
+
+  /**
+   * Mark all notifications as read via HTTP
+   */
+  async markAllNotificationsAsRead(): Promise<{
+    success: boolean;
+    markedCount: number;
+  }> {
+    const response = await this.client.patch('/api/notifications/mark-all-read', {}, {
+      headers: this.getCsrfHeaders(),
+    });
+    return response.data;
+  }
+
+  /**
+   * Get unread notification count via HTTP
+   */
+  async getUnreadNotificationCount(): Promise<{
+    count: number;
+  }> {
+    const response = await this.client.get('/api/notifications/unread-count');
+    return response.data;
+  }
+
+  async getStudentDashboard(): Promise<StudentDashboard> {
+    const response = await this.client.get('/api/student/dashboard');
+    return response.data;
+  }
+
+  // Manual Scoring Methods
+  async getPendingManualGrading(params = {}) {
+    const response = await this.client.get('/api/manual-scoring/pending-review', { params });
+    return response.data;
+  }
+
+  async updateQuestionScore(resultId: string, questionIndex: number, data: {
+    pointsEarned: number;
+    isCorrect: boolean;
+    feedback?: string;
+  }) {
+    const response = await this.client.patch(
+      `/api/manual-scoring/results/${resultId}/questions/${questionIndex}`,
+      data
+    );
+    return response.data;
+  }
+
+  async bulkUpdateQuestionScores(resultId: string, data: {
+    updates: Array<{
+      questionIndex: number;
+      pointsEarned: number;
+      isCorrect: boolean;
+      feedback?: string;
+    }>;
+    feedback?: string;
+  }) {
+    const response = await this.client.patch(`/api/manual-scoring/results/${resultId}/bulk-update`, data);
+    return response.data;
+  }
+
+  async overrideTotalScore(resultId: string, data: {
+    totalScore: number;
+    percentage: number;
+    passed: boolean;
+    reason: string;
+  }) {
+    const response = await this.client.patch(`/api/manual-scoring/results/${resultId}/override-score`, data);
+    return response.data;
   }
 }
 

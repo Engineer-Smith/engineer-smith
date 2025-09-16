@@ -1,8 +1,8 @@
 // src/components/QuestionCreation/components/MultipleChoiceEditor.tsx - CONTEXT INTEGRATED
 
+import { AlertTriangle, CheckCircle, Info, Plus, Trash2 } from 'lucide-react';
 import React from 'react';
-import { Card, CardBody, Button, Input, Alert, Badge, FormGroup, Label } from 'reactstrap';
-import { Plus, Trash2, AlertTriangle, CheckCircle, Info } from 'lucide-react';
+import { Alert, Badge, Button, Card, CardBody, Input, Label } from 'reactstrap';
 import type { CreateQuestionData } from '../../../types';
 
 // ✅ NEW: Enhanced props with context validation integration

@@ -1,9 +1,9 @@
 // src/services/questionValidationService.ts - Complete validation with business rules
 
-import type { CreateQuestionData, Language, QuestionCategory, QuestionType } from '../types';
+import type { CreateQuestionData, QuestionType } from '../types';
 import {
-  validateQuestionTypeCategory,
-  getRequiredFieldsForTypeCategory
+  getRequiredFieldsForTypeCategory,
+  validateQuestionTypeCategory
 } from '../utils/questionBusinessRules';
 
 import type { BusinessRuleViolation } from '../utils/questionBusinessRules';

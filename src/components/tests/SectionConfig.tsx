@@ -32,7 +32,6 @@ import {
   Info,
   Target,
   BarChart3,
-  Eye,
   Copy
 } from 'lucide-react';
 
@@ -64,7 +63,6 @@ const SectionConfig: React.FC<WizardStepProps> = ({
   setError
 }) => {
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
-  const [autoDistribute, setAutoDistribute] = useState<boolean>(false);
 
   const addSection = (): void => {
     const currentSections = testData.sections || [];

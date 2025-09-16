@@ -1,34 +1,33 @@
 // src/components/QuestionCreation/components/PromptGenerationModal.tsx
+import {
+  CheckCircle,
+  Code,
+  Copy,
+  Download,
+  FileText,
+  HelpCircle,
+  Lightbulb,
+  RefreshCw,
+  X,
+  Zap
+} from 'lucide-react';
 import React, { useState } from 'react';
 import {
-  Modal,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
+  Alert,
+  Badge,
   Button,
   Card,
   CardBody,
-  Form,
   FormGroup,
-  Label,
   Input,
-  Alert,
-  Badge,
+  Label,
+  Modal,
+  ModalBody,
+  ModalFooter,
+  ModalHeader,
   Spinner,
   UncontrolledTooltip
 } from 'reactstrap';
-import {
-  Zap,
-  Copy,
-  Download,
-  RefreshCw,
-  X,
-  CheckCircle,
-  Code,
-  HelpCircle,
-  Lightbulb,
-  FileText
-} from 'lucide-react';
 import { useQuestionCreation } from '../../../context/QuestionCreationContext';
 
 const PromptGenerationModal: React.FC = () => {

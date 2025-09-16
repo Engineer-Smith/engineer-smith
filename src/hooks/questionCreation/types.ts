@@ -1,14 +1,11 @@
 // src/hooks/questionCreation/types.ts
 import type {
+  CreateQuestionData,
   Language,
+  Question,
   QuestionCategory,
   QuestionType,
-  TestCase,
-  Difficulty,
-  Tags,
-  TestStatus,
-  CreateQuestionData,
-  Question
+  TestCase
 } from '../../types';
 
 

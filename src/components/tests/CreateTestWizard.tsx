@@ -1,4 +1,4 @@
-// src/components/tests/CreateTestWizard.tsx - FIXED VERSION
+// src/components/tests/CreateTestWizard.tsx - FIXED VERSION with proper validation
 import React, { useState } from 'react';
 import { Container, Row, Col, Card, CardBody, Progress, Alert } from 'reactstrap';
 import { CheckCircle, AlertCircle } from 'lucide-react';
@@ -58,17 +58,16 @@ interface CreateTestWizardProps {
   onComplete?: () => void;
 }
 
-const CreateTestWizard: React.FC<CreateTestWizardProps> = ({ 
-  onCancel, 
-  onComplete 
+const CreateTestWizard: React.FC<CreateTestWizardProps> = ({
+  onCancel,
+  onComplete
 }) => {
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
-  // Initialize test data with backend-aligned structure
+  // Initialize test data with backend-aligned structure - UPDATED with 0 defaults
   const [testData, setTestData] = useState<CreateTestData>(() => {
-    // Use the helper function from types to create empty test data
     const initialData: CreateTestData = {
       // Required backend fields
       title: '',
@@ -76,22 +75,22 @@ const CreateTestWizard: React.FC<CreateTestWizardProps> = ({
       testType: 'custom',
       languages: [], // Backend expects array of Language enum values
       tags: [], // Backend expects array of Tags enum values
-      
-      // Settings object - matches backend exactly
+
+      // Settings object - UPDATED: Default to 0 for required validation
       settings: {
-        timeLimit: 60, // Default 1 hour
-        attemptsAllowed: 1, // Default 1 attempt
+        timeLimit: 0, // CHANGED: Default to 0 so user must set it
+        attemptsAllowed: 0, // CHANGED: Default to 0 so user must set it
         shuffleQuestions: false, // Default false
-        useSections: false, // Default false
+        useSections: false, // Default false - but this will be explicitly set by user
       },
-      
+
       // Questions/sections - used based on useSections setting
       questions: [], // Array of {questionId, points} - now always initialized
       sections: [], // Array of sections with questions - now always initialized
-      
+
       // Backend flags
       status: 'draft', // Default to draft
-      
+
       // Frontend-only helper fields (will be stripped before API call)
       instructions: '', // Not sent to backend
     };
@@ -105,11 +104,11 @@ const CreateTestWizard: React.FC<CreateTestWizardProps> = ({
   // Determine which steps should be shown based on test configuration
   const getValidSteps = (): number[] => {
     const steps = [1, 2]; // Always show basics and structure
-    
+
     if (testData.settings.useSections) {
       steps.push(3); // Show section config if using sections
     }
-    
+
     steps.push(4, 5); // Always show questions and review
     return steps;
   };
@@ -144,9 +143,9 @@ const CreateTestWizard: React.FC<CreateTestWizardProps> = ({
 
   const handleStepClick = (stepId: number): void => {
     const validSteps = getValidSteps();
-    
+
     // Only allow clicking on valid steps that are accessible
-    if (validSteps.includes(stepId) && stepId <= currentStep + 1) {
+    if (validSteps.includes(stepId) && isStepAccessible(stepId)) {
       setCurrentStep(stepId);
       setError(null);
     }
@@ -158,23 +157,33 @@ const CreateTestWizard: React.FC<CreateTestWizardProps> = ({
     }
   };
 
+  // UPDATED: Step completion validation with proper 0 checking
   const isStepCompleted = (stepId: number): boolean => {
     switch (stepId) {
       case 1:
-        return !!(testData.title && testData.description && testData.languages.length > 0);
+        // TestBasics: title, description, and at least one language
+        return !!(testData.title?.trim() &&
+          testData.description?.trim() &&
+          testData.languages.length > 0);
       case 2:
-        return !!(typeof testData.settings.useSections === 'boolean' && 
-                 testData.settings.timeLimit > 0 && 
-                 testData.settings.attemptsAllowed > 0);
+        // TestStructure: structure choice, time limit > 0, attempts > 0
+        return !!(testData.settings.useSections !== undefined && // Must explicitly choose structure
+          testData.settings.timeLimit > 0 && // Must be greater than 0
+          testData.settings.attemptsAllowed > 0); // Must be greater than 0
       case 3:
-        return testData.settings.useSections === false || Boolean(testData.sections && testData.sections.length > 0);
+        // SectionConfig: only needed if using sections, must have at least one section
+        return testData.settings.useSections === false ||
+          Boolean(testData.sections && testData.sections.length > 0);
       case 4:
+        // QuestionAssignment: must have questions assigned
         if (testData.settings.useSections) {
-          return testData.sections ? testData.sections.every(section => section.questions.length > 0) : false;
+          return testData.sections ?
+            testData.sections.every(section => section.questions.length > 0) : false;
         }
         return testData.questions ? testData.questions.length > 0 : false;
       case 5:
-        return false; // Review step is never "completed" until published
+        // Review step is never "completed" until published
+        return false;
       default:
         return false;
     }
@@ -183,11 +192,15 @@ const CreateTestWizard: React.FC<CreateTestWizardProps> = ({
   const isStepAccessible = (stepId: number): boolean => {
     const validSteps = getValidSteps();
     if (!validSteps.includes(stepId)) return false;
-    
-    // Can access current step, completed steps, or next incomplete step
+
+    // Can access current step or any completed steps
     if (stepId <= currentStep) return true;
-    if (stepId === currentStep + 1) return true;
-    
+
+    // Can only access the next step if the current step is completed
+    if (stepId === currentStep + 1) {
+      return isStepCompleted(currentStep);
+    }
+
     return false;
   };
 
@@ -272,16 +285,16 @@ const CreateTestWizard: React.FC<CreateTestWizardProps> = ({
                 <CheckCircle size={20} className="me-2 text-primary" />
                 Create Test
               </h5>
-              
+
               {/* Progress Bar */}
               <div className="mb-4">
                 <div className="d-flex justify-content-between text-sm mb-2">
                   <span>Progress</span>
                   <span className="fw-bold">{Math.round(progressPercentage)}%</span>
                 </div>
-                <Progress 
-                  value={progressPercentage} 
-                  color="primary" 
+                <Progress
+                  value={progressPercentage}
+                  color="primary"
                   className="mb-3"
                   style={{ height: '8px' }}
                 />
@@ -294,26 +307,25 @@ const CreateTestWizard: React.FC<CreateTestWizardProps> = ({
                   const isCompleted = isStepCompleted(step.id);
                   const isAccessible = isStepAccessible(step.id);
                   const isCurrent = step.id === currentStep;
-                  
+
                   if (!isValid) return null;
 
                   return (
                     <div
                       key={step.id}
-                      className={`wizard-step ${isCurrent ? 'active' : ''} ${
-                        isCompleted ? 'completed' : ''
-                      } ${!isAccessible ? 'disabled' : ''}`}
+                      className={`wizard-step ${isCurrent ? 'active' : ''} ${isCompleted ? 'completed' : ''
+                        } ${!isAccessible ? 'disabled' : ''}`}
                       onClick={() => handleStepClick(step.id)}
                       style={{
                         padding: '12px',
                         marginBottom: '8px',
                         borderRadius: '8px',
                         cursor: isAccessible ? 'pointer' : 'not-allowed',
-                        backgroundColor: isCurrent ? '#007bff' : 
-                                       isCompleted ? '#28a745' : 
-                                       isAccessible ? '#f8f9fa' : '#e9ecef',
-                        color: isCurrent || isCompleted ? 'white' : 
-                               isAccessible ? '#495057' : '#6c757d',
+                        backgroundColor: isCurrent ? '#007bff' :
+                          isCompleted ? '#28a745' :
+                            isAccessible ? '#f8f9fa' : '#e9ecef',
+                        color: isCurrent || isCompleted ? 'white' :
+                          isAccessible ? '#495057' : '#6c757d',
                         transition: 'all 0.2s ease',
                         border: isCurrent ? '2px solid #0056b3' : '2px solid transparent',
                         opacity: isAccessible ? 1 : 0.6
@@ -359,7 +371,7 @@ const CreateTestWizard: React.FC<CreateTestWizardProps> = ({
                 <div className="text-muted small">
                   {currentStepData?.description}
                 </div>
-                
+
                 {/* Step completion status */}
                 <div className="mt-2">
                   {isStepCompleted(currentStep) ? (
@@ -376,7 +388,7 @@ const CreateTestWizard: React.FC<CreateTestWizardProps> = ({
                 </div>
               </div>
 
-              {/* Test Summary */}
+              {/* Test Summary - UPDATED to handle 0 values */}
               {testData.title && (
                 <div className="mt-4 p-3 bg-primary bg-opacity-10 rounded border border-primary border-opacity-25">
                   <div className="fw-bold mb-1 text-primary">Test Summary</div>
@@ -388,7 +400,7 @@ const CreateTestWizard: React.FC<CreateTestWizardProps> = ({
                       <strong>{getQuestionsLabel()}:</strong> {getQuestionsCount()}
                     </div>
                     <div>
-                      <strong>Time Limit:</strong> {testData.settings.timeLimit} min
+                      <strong>Time Limit:</strong> {testData.settings.timeLimit > 0 ? `${testData.settings.timeLimit} min` : 'Not set'}
                     </div>
                   </div>
                 </div>

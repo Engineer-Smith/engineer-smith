@@ -1,24 +1,23 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
+  AlertTriangle,
+  CheckCircle,
+  Pause,
+  Play,
+  RefreshCw,
+  Wifi,
+  WifiOff
+} from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Alert,
+  Button,
   Modal,
-  ModalHeader,
   ModalBody,
   ModalFooter,
-  Button,
-  Alert,
+  ModalHeader,
   Progress,
   Spinner
 } from 'reactstrap';
-import {
-  WifiOff,
-  Wifi,
-  Pause,
-  Play,
-  AlertTriangle,
-  Clock,
-  CheckCircle,
-  RefreshCw
-} from 'lucide-react';
 
 interface OfflineManagerProps {
   isTestActive: boolean;
@@ -87,7 +86,6 @@ const OfflineTestManager: React.FC<OfflineManagerProps> = ({
 
   // Handle going offline
   const handleOffline = useCallback(() => {
-    console.log('🔴 Connection lost - pausing test');
     
     const now = Date.now();
     setConnectionState(prev => ({
@@ -140,7 +138,6 @@ const OfflineTestManager: React.FC<OfflineManagerProps> = ({
 
   // Handle coming back online
   const handleOnline = useCallback(async () => {
-    console.log('🟢 Connection restored - checking sync');
 
     // Verify connection is actually working
     const isHealthy = await checkConnectionHealth();
@@ -254,8 +251,6 @@ const OfflineTestManager: React.FC<OfflineManagerProps> = ({
         ...prev,
         lastSuccessfulSync: Date.now()
       }));
-
-      console.log('✅ Offline data synced successfully');
     } catch (error) {
       console.error('❌ Failed to sync offline data:', error);
       // Keep data in queue for next attempt
@@ -626,25 +621,21 @@ export const useOfflineTestManager = (sessionId: string) => {
 
   // Listen for test lifecycle events from OfflineTestManager
   useEffect(() => {
-    const handleTestPaused = (event: CustomEvent) => {
+    const handleTestPaused = () => {
       setIsTestPaused(true);
-      console.log('Test paused:', event.detail);
     };
 
     const handleTestResumed = (event: CustomEvent) => {
       setIsTestPaused(false);
       setOfflineTimeToAdd(event.detail.offlineDuration);
-      console.log('Test resumed:', event.detail);
     };
 
-    const handleTestReconnected = (event: CustomEvent) => {
-      console.log('Test reconnected:', event.detail);
+    const handleTestReconnected = () => {
       // Clear offline queue since it will be synced
       setOfflineQueue([]);
     };
 
     const handleTestForceSubmit = (event: CustomEvent) => {
-      console.log('Test force submit:', event.detail);
       // Handle forced submission due to max offline time
       window.dispatchEvent(new CustomEvent('forceSubmitTest', { detail: event.detail }));
     };

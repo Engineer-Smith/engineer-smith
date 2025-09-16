@@ -1,6 +1,6 @@
 // src/utils/testCasesStructure.ts - Fixed to match backend schema exactly
 
-import type { CreateQuestionData, Language, TestCase, CodeConfig } from '../types';
+import type { CodeConfig, Language, TestCase } from '../types';
 
 export interface TestCaseTemplate {
   id: string;
@@ -67,7 +67,7 @@ export class TestCaseBuilder {
     testCase: TestCase, 
     index: number,
     language: Language,
-    entryFunction?: string
+    _entryFunction?: string
   ): TestCaseValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -196,7 +196,7 @@ export class TestCaseBuilder {
     testCase: TestCase,
     index: number,
     language: Language,
-    errors: string[],
+    _errors: string[],
     warnings: string[]
   ): void {
     
@@ -463,9 +463,9 @@ export class TestCaseBuilder {
    * GENERATOR: Auto-generate test cases based on function analysis
    */
   static generateSuggestedTestCases(
-    codeConfig: CodeConfig,
+    _codeConfig: CodeConfig,
     language: Language,
-    functionHint?: string
+    _functionHint?: string
   ): TestCase[] {
     const suggestions: TestCase[] = [];
 
@@ -502,7 +502,7 @@ export class TestCaseBuilder {
 /**
  * REACT HOOK: For test case management in components
  */
-export const useTestCaseBuilder = (initialTestCases: TestCase[] = []) => {
+export const useTestCaseBuilder = (_initialTestCases: TestCase[] = []) => {
   const addTestCase = () => TestCaseBuilder.createEmptyTestCase();
   
   const validateTestSuite = (testCases: TestCase[], codeConfig: CodeConfig, language: Language) => 

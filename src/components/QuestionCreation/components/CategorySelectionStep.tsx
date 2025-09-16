@@ -22,7 +22,6 @@ interface CategorySelectionStepProps {
 }
 
 const CategorySelectionStep: React.FC<CategorySelectionStepProps> = ({
-  selectedLanguage,
   languageLabel,
   availableCategories,
   onCategorySelect,

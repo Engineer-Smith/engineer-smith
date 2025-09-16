@@ -198,7 +198,7 @@ const DuplicateWarningModal: React.FC = () => {
               </p>
 
               <Row>
-                {duplicatesFound.map((duplicate, index) => (
+                {duplicatesFound.map((duplicate) => (
                   <Col md={6} key={duplicate._id} className="mb-4">
                     <Card className={`h-100 ${duplicate.exactMatch ? 'border-danger' : 'border-warning'}`}>
                       <CardBody className="p-0">

@@ -36,12 +36,9 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
     currentQuestion,
     currentAnswer,
     sectionInfo,
-    canNavigateBackward,
-    canNavigateForward,
     isNavigating,
     onSubmitAnswer,
     onSkip,
-    onSubmitTest, // Will only be called by server response, not frontend logic
     onClearAnswer,
     submitting = false,
 }) => {

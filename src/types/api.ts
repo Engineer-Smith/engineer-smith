@@ -1,14 +1,11 @@
 // src/types/api.ts - Built from scratch to match actual backend responses
 import type {
-  User,
   Organization,
   QuestionStatus,
-  SessionStatus,
+  User
 } from './common';
 import type { Question, QuestionStatsResponse, QuestionTestResult } from './question';
 import type { Test } from './test';
-import type { TestSession } from './session';
-import type { Result } from './result';
 
 // =====================
 // CRITICAL: BACKEND RETURNS DATA DIRECTLY

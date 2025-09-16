@@ -56,7 +56,6 @@ const TestCaseForm: React.FC<TestCaseFormProps> = ({
   onCancel,
   onGenerateSamples,
   onGeneratePrompt,
-  validationErrors: externalValidationErrors,
   canGenerateSamples,
   isGeneratingPrompt,
   onGenerateTemplates,

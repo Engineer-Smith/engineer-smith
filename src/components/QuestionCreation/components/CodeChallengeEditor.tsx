@@ -36,7 +36,6 @@ const CodeChallengeEditor: React.FC<CodeChallengeEditorProps> = ({
   onInputChange,
   validation,
   isFieldRequired = () => false,
-  availableRuntimes = [],
   functionSignatures = [],
   performanceRecommendations = [],
   selectedLanguage,

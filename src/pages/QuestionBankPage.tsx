@@ -13,7 +13,7 @@ import AddQuestionCard from '../components/QuestionBank/AddQuestionCard';
 import QuickActions from '../components/QuestionBank/QuickActions';
 
 // Hooks and config
-import { useQuestionStats } from '../hooks/useQuestionStats';
+import { useQuestionStats } from '../hooks/questions/useQuestionStats';
 import { skills } from '../config/skills';
 
 // Styles

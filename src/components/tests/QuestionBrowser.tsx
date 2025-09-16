@@ -62,7 +62,6 @@ interface QuestionBrowserProps {
 
 const QuestionBrowser: React.FC<QuestionBrowserProps> = ({
     loading,
-    questions,
     filteredQuestions,
     testData,
     selectedSectionIndex,
@@ -76,8 +75,6 @@ const QuestionBrowser: React.FC<QuestionBrowserProps> = ({
     setFilterLanguage,
     filterCategory,
     setFilterCategory,
-    filterTag,
-    setFilterTag,
     setSelectedSectionIndex,
     onToggleQuestion,
     onAssignAll,

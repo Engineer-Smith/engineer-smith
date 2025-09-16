@@ -1,6 +1,6 @@
 // src/utils/questionBusinessRules.ts - Business rules enforcement
 
-import type { Language, QuestionCategory, QuestionType } from '../types';
+import type { QuestionCategory, QuestionType } from '../types';
 
 // ✅ Backend business rules - EXACT copy of backend validation
 export const QUESTION_TYPE_CATEGORY_RULES = {

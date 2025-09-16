@@ -87,37 +87,22 @@ export const validateStepContent = (
 ): { isValid: boolean; errors: string[] } => {
   const errors: string[] = [];
 
-  console.log('🔧 validateStepContent called with:', {
-    step,
-    selectedLanguage,
-    selectedCategory,
-    selectedQuestionType,
-    questionDataExists: !!questionData,
-    testCasesLength: testCases?.length || 0
-  });
-
   switch (step) {
     case 1: // ✅ FIXED: Step 1 validation - Basics
-      console.log('🔧 Validating Step 1 (Basics)');
       
       if (!selectedLanguage) {
         errors.push('Language is required');
-        console.log('🔧 Missing language');
       }
       if (!selectedCategory) {
         errors.push('Category is required');
-        console.log('🔧 Missing category');
       }
       if (!selectedQuestionType) {
         errors.push('Question type is required');
-        console.log('🔧 Missing question type');
       }
-      
-      console.log('🔧 Step 1 validation result:', { errors, isValid: errors.length === 0 });
+
       break;
 
     case 2: // Content
-      console.log('🔧 Validating Step 2 (Content)');
       
       if (!questionData?.title?.trim()) {
         errors.push('Title is required');
@@ -167,7 +152,6 @@ export const validateStepContent = (
       break;
 
     case 3: // Test Cases
-      console.log('🔧 Validating Step 3 (Test Cases)');
       
       const requiresTestCases = selectedQuestionType === 'codeChallenge' && selectedCategory === 'logic';
       if (requiresTestCases) {
@@ -185,7 +169,6 @@ export const validateStepContent = (
       break;
 
     case 4: // Review - validation handled elsewhere
-      console.log('🔧 Validating Step 4 (Review)');
       // Review step validation is handled by getSaveValidationErrors
       break;
   }
@@ -195,6 +178,5 @@ export const validateStepContent = (
     errors
   };
 
-  console.log('🔧 Final validation result for step', step, ':', result);
   return result;
 };

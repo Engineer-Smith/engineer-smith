@@ -1,22 +1,15 @@
 // src/types/createTest.ts - Test creation wizard types (wizard-specific only)
 import type {
-  TestType,
+  Organization,
   TestStatus,
-  Language,
-  Tags,
-  Organization
+  TestType
 } from './common';
 import type {
-  Test,
-  TestSettings,
-  TestSection,
-  TestQuestionReference,
+  TestTemplate as BaseTestTemplate,
   CreateTestRequest,
-  TestTemplate as BaseTestTemplate
+  TestSection
 } from './test';
 import {
-  getTotalQuestions,
-  getTotalPoints,
   isUsingSections
 } from './test';
 
@@ -338,7 +331,7 @@ export const updateWizardState = (
   canGoBack: state.currentStep > 0 && config.allowBackNavigation,
   completedSteps: config.steps
     .slice(0, state.currentStep + 1)
-    .map((step, index) => index)
+    .map((_, index) => index)
     .filter(index => isStepValid(config.steps[index]?.id, testData)),
 });
 
@@ -521,16 +514,10 @@ export const canCreateGlobalTests = (userOrganization?: Organization): boolean =
 
 // Re-export utility functions from test.ts to avoid duplication
 export {
-  getTotalQuestions as getTotalQuestionCount,
-  getTotalPoints,
-  isUsingSections as isUsingSection,
+  getTotalPoints, getTotalQuestions as getTotalQuestionCount, isUsingSections as isUsingSection
 } from './test';
 
 // Re-export core types for convenience
-export type { 
-  TestSettings, 
-  TestSection, 
-  TestQuestionReference,
-  Test,
-  CreateTestRequest,
+export type {
+  CreateTestRequest, Test, TestQuestionReference, TestSection, TestSettings
 } from './test';

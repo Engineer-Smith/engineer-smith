@@ -1,36 +1,33 @@
-import React, { useState, useEffect } from 'react';
 import {
-  Row,
-  Col,
-  FormGroup,
-  Label,
-  Input,
+  ArrowRight,
+  Building,
+  CheckCircle,
+  Code,
+  Eye,
+  FileText,
+  Globe,
+  Server,
+  Smartphone,
+  Target,
+  X
+} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import {
+  Alert,
+  Badge,
   Button,
   Card,
   CardBody,
-  Badge,
-  Alert,
-  ButtonGroup
+  Col,
+  FormGroup,
+  Input,
+  Label,
+  Row
 } from 'reactstrap';
-import {
-  ArrowRight,
-  Target,
-  FileText,
-  Code,
-  Smartphone,
-  Globe,
-  Server,
-  CheckCircle,
-  X,
-  Building,
-  Info,
-  Eye
-} from 'lucide-react';
 
 // Import types
-import type { WizardStepProps } from '../../types';
-import type { Language, Tags, TestType, TestStatus } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import type { Language, Tags, TestStatus, TestType, WizardStepProps } from '../../types';
 
 // Interface for language options
 interface LanguageOption {
@@ -79,7 +76,7 @@ const TestBasics: React.FC<WizardStepProps> = ({
 
   // Determine test scope based on user's organization
   const isGlobalTest = user?.organization?.isSuperOrg ?? false;
-  const testScopeText = user?.organization?.isSuperOrg 
+  const testScopeText = user?.organization?.isSuperOrg
     ? 'Global Test (Available to all organizations)'
     : `Organization Test (Available to ${user?.organization?.name || 'your organization'} only)`;
 
@@ -174,19 +171,19 @@ const TestBasics: React.FC<WizardStepProps> = ({
     { value: 'javascript', name: 'JavaScript', category: 'Frontend Core', color: 'warning' },
     { value: 'dom', name: 'DOM Manipulation', category: 'Frontend Core', color: 'warning' },
     { value: 'events', name: 'Event Handling', category: 'Frontend Core', color: 'warning' },
-    
+
     // CSS Advanced
     { value: 'flexbox', name: 'Flexbox', category: 'CSS Advanced', color: 'info' },
     { value: 'grid', name: 'CSS Grid', category: 'CSS Advanced', color: 'info' },
     { value: 'responsive-design', name: 'Responsive Design', category: 'CSS Advanced', color: 'info' },
-    
+
     // JavaScript Advanced
     { value: 'async-programming', name: 'Async Programming', category: 'JavaScript Advanced', color: 'warning' },
     { value: 'promises', name: 'Promises', category: 'JavaScript Advanced', color: 'warning' },
     { value: 'async-await', name: 'Async/Await', category: 'JavaScript Advanced', color: 'warning' },
     { value: 'es6', name: 'ES6+', category: 'JavaScript Advanced', color: 'warning' },
     { value: 'closures', name: 'Closures', category: 'JavaScript Advanced', color: 'warning' },
-    
+
     // React
     { value: 'react', name: 'React', category: 'React', color: 'primary' },
     { value: 'components', name: 'Components', category: 'React', color: 'primary' },
@@ -196,14 +193,14 @@ const TestBasics: React.FC<WizardStepProps> = ({
     { value: 'jsx', name: 'JSX', category: 'React', color: 'primary' },
     { value: 'context-api', name: 'Context API', category: 'React', color: 'primary' },
     { value: 'react-router', name: 'React Router', category: 'React', color: 'primary' },
-    
+
     // Mobile
     { value: 'react-native', name: 'React Native', category: 'Mobile', color: 'primary' },
     { value: 'flutter', name: 'Flutter', category: 'Mobile', color: 'info' },
     { value: 'mobile-development', name: 'Mobile Development', category: 'Mobile', color: 'warning' },
     { value: 'native-components', name: 'Native Components', category: 'Mobile', color: 'primary' },
     { value: 'navigation', name: 'Navigation', category: 'Mobile', color: 'info' },
-    
+
     // Backend
     { value: 'express', name: 'Express.js', category: 'Backend', color: 'success' },
     { value: 'nodejs', name: 'Node.js', category: 'Backend', color: 'success' },
@@ -211,13 +208,13 @@ const TestBasics: React.FC<WizardStepProps> = ({
     { value: 'middleware', name: 'Middleware', category: 'Backend', color: 'success' },
     { value: 'routing', name: 'Routing', category: 'Backend', color: 'success' },
     { value: 'authentication', name: 'Authentication', category: 'Backend', color: 'success' },
-    
+
     // Python
     { value: 'python', name: 'Python', category: 'Python', color: 'success' },
     { value: 'functions', name: 'Functions', category: 'Python', color: 'success' },
     { value: 'classes', name: 'Classes', category: 'Python', color: 'success' },
     { value: 'modules', name: 'Modules', category: 'Python', color: 'success' },
-    
+
     // General Programming
     { value: 'algorithms', name: 'Algorithms', category: 'General Programming', color: 'secondary' },
     { value: 'data-structures', name: 'Data Structures', category: 'General Programming', color: 'secondary' },
@@ -225,24 +222,26 @@ const TestBasics: React.FC<WizardStepProps> = ({
     { value: 'error-handling', name: 'Error Handling', category: 'General Programming', color: 'secondary' }
   ];
 
-  // Auto-detect template based on current selections
+  // Auto-detect template based on current selections (but don't auto-apply)
   useEffect(() => {
-    const matchingTemplate = TEST_TEMPLATES.find(template => 
-      template.languages.length === testData.languages?.length &&
-      template.languages.every(lang => testData.languages?.includes(lang)) &&
-      template.tags.length === testData.tags?.length &&
-      template.tags.every(tag => testData.tags?.includes(tag))
-    );
-    
-    if (matchingTemplate && !showCustomSelection) {
-      setSelectedTemplate(matchingTemplate.id);
+    if (!selectedTemplate && testData.languages?.length > 0) {
+      const matchingTemplate = TEST_TEMPLATES.find(template =>
+        template.languages.length === testData.languages?.length &&
+        template.languages.every(lang => testData.languages?.includes(lang)) &&
+        template.tags.length === testData.tags?.length &&
+        template.tags.every(tag => testData.tags?.includes(tag))
+      );
+
+      if (matchingTemplate) {
+        setSelectedTemplate(matchingTemplate.id);
+      }
     }
-  }, [testData.languages, testData.tags, showCustomSelection]);
+  }, [testData.languages, testData.tags, selectedTemplate]);
 
   const handleTemplateSelect = (template: TestTemplate): void => {
     setSelectedTemplate(template.id);
     setShowCustomSelection(template.id === 'custom');
-    
+
     if (template.id !== 'custom') {
       setTestData({
         ...testData,
@@ -264,7 +263,7 @@ const TestBasics: React.FC<WizardStepProps> = ({
     const newLanguages = testData.languages?.includes(language)
       ? testData.languages.filter(l => l !== language)
       : [...(testData.languages || []), language];
-    
+
     setTestData({
       ...testData,
       languages: newLanguages
@@ -275,30 +274,37 @@ const TestBasics: React.FC<WizardStepProps> = ({
     const newTags = testData.tags?.includes(tag)
       ? testData.tags.filter(t => t !== tag)
       : [...(testData.tags || []), tag];
-    
+
     setTestData({
       ...testData,
       tags: newTags
     });
   };
 
+  // Helper function that doesn't set errors - for disabled state
+  const isStepValid = (): boolean => {
+    return !!(testData.title?.trim() && 
+             testData.description?.trim() && 
+             testData.languages?.length > 0);
+  };
+
+  // Keep the existing validateStep for onClick validation
   const validateStep = (): boolean => {
+
     if (!testData.title?.trim()) {
       setError?.('Test title is required');
       return false;
     }
-    
+
     if (!testData.description?.trim()) {
       setError?.('Test description is required');
       return false;
     }
-    
+
     if (!testData.languages?.length) {
       setError?.('Please select at least one programming language');
       return false;
     }
-    
-    // Don't require tags - they're optional for better UX
     setError?.(null);
     return true;
   };
@@ -355,7 +361,7 @@ const TestBasics: React.FC<WizardStepProps> = ({
             <FileText size={20} className="me-2" />
             Basic Information
           </h6>
-          
+
           <Row>
             <Col md={12}>
               <FormGroup>
@@ -372,7 +378,7 @@ const TestBasics: React.FC<WizardStepProps> = ({
               </FormGroup>
             </Col>
           </Row>
-          
+
           <Row>
             <Col md={8}>
               <FormGroup>
@@ -404,8 +410,8 @@ const TestBasics: React.FC<WizardStepProps> = ({
                   <option value="active">Active</option>
                 </Input>
                 <small className="text-muted">
-                  {testData.status === 'draft' 
-                    ? 'Test will be saved but not visible to students' 
+                  {testData.status === 'draft'
+                    ? 'Test will be saved but not visible to students'
                     : 'Test will be immediately available to students'
                   }
                 </small>
@@ -450,31 +456,30 @@ const TestBasics: React.FC<WizardStepProps> = ({
           <p className="text-muted mb-3">
             Select a pre-configured template or create a custom test. Templates automatically configure languages and topics.
           </p>
-          
+
           <Row>
             {TEST_TEMPLATES.map((template) => {
               const IconComponent = template.icon;
               const isSelected = selectedTemplate === template.id;
-              
+
               return (
                 <Col md={6} lg={4} key={template.id} className="mb-3">
                   <Card
-                    className={`h-100 border-2 cursor-pointer ${
-                      isSelected ? `border-${template.color} bg-${template.color} bg-opacity-10` : 'border-light'
-                    }`}
+                    className={`h-100 border-2 cursor-pointer ${isSelected ? `border-${template.color} bg-${template.color} bg-opacity-10` : 'border-light'
+                      }`}
                     onClick={() => handleTemplateSelect(template)}
                     style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
                   >
                     <CardBody className="text-center p-3">
                       <div className="mb-2">
-                        <IconComponent 
-                          size={32} 
-                          className={isSelected ? `text-${template.color}` : 'text-muted'} 
+                        <IconComponent
+                          size={32}
+                          className={isSelected ? `text-${template.color}` : 'text-muted'}
                         />
                       </div>
                       <h6 className="mb-2">{template.name}</h6>
                       <p className="text-muted small mb-2">{template.description}</p>
-                      
+
                       {/* Template Stats */}
                       <div className="mb-2">
                         <div className="d-flex justify-content-between small text-muted mb-1">
@@ -486,7 +491,7 @@ const TestBasics: React.FC<WizardStepProps> = ({
                           <span>{template.difficulty}</span>
                         </div>
                       </div>
-                      
+
                       {template.languages.length > 0 && (
                         <div className="mb-2">
                           {template.languages.slice(0, 3).map(lang => {
@@ -504,7 +509,7 @@ const TestBasics: React.FC<WizardStepProps> = ({
                           )}
                         </div>
                       )}
-                      
+
                       {isSelected && (
                         <div className="mt-2">
                           <Badge color={template.color}>
@@ -562,9 +567,9 @@ const TestBasics: React.FC<WizardStepProps> = ({
                 </Button>
               )}
             </div>
-            
+
             <p className="text-muted mb-3">Select the programming languages for your test:</p>
-            
+
             {Object.entries(groupedLanguages).map(([category, languages]) => (
               <div key={category} className="mb-3">
                 <Label className="fw-bold">{category}</Label>
@@ -615,11 +620,11 @@ const TestBasics: React.FC<WizardStepProps> = ({
               <Target size={20} className="me-2" />
               Topics & Skills
             </h6>
-            
+
             <p className="text-muted mb-3">
               Select the specific topics and skills to assess. These help categorize questions and provide better filtering.
             </p>
-            
+
             {Object.entries(groupedTags).map(([category, tags]) => (
               <div key={category} className="mb-3">
                 <Label className="fw-bold">{category}</Label>
@@ -675,7 +680,7 @@ const TestBasics: React.FC<WizardStepProps> = ({
               <Eye size={20} className="me-2" />
               Test Configuration Summary
             </h6>
-            
+
             <Row>
               <Col md={6}>
                 <div className="mb-2">
@@ -690,13 +695,13 @@ const TestBasics: React.FC<WizardStepProps> = ({
               </Col>
               <Col md={6}>
                 <div className="mb-2">
-                  <strong>Scope:</strong> 
+                  <strong>Scope:</strong>
                   <Badge color={isGlobalTest ? "info" : "secondary"} className="ms-2">
                     {isGlobalTest ? "Global" : "Organization"}
                   </Badge>
                 </div>
                 <div className="mb-2">
-                  <strong>Status:</strong> 
+                  <strong>Status:</strong>
                   <Badge color={testData.status === 'active' ? "success" : "warning"} className="ms-2">
                     {testData.status || 'draft'}
                   </Badge>
@@ -716,6 +721,7 @@ const TestBasics: React.FC<WizardStepProps> = ({
           color="primary"
           onClick={handleNext}
           className="d-flex align-items-center"
+          disabled={!isStepValid()}
         >
           Next: Test Structure
           <ArrowRight size={16} className="ms-1" />

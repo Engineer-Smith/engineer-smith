@@ -1,15 +1,15 @@
 // src/components/QuestionCreation/QuestionCreationWizard.tsx - FINAL VERSION
-import React, { useEffect, useCallback } from 'react';
-import { Container, Row, Col, Card, CardBody, Alert, Spinner } from 'reactstrap';
-import { CheckCircle, AlertCircle, ArrowLeft, ArrowRight } from 'lucide-react';
+import { AlertCircle, ArrowLeft, ArrowRight, CheckCircle } from 'lucide-react';
+import React, { useCallback, useEffect } from 'react';
+import { Alert, Card, CardBody, Col, Container, Row, Spinner } from 'reactstrap';
 import { useQuestionCreation } from '../../context/QuestionCreationContext';
 import type { Question } from '../../types';
 
 // Import step components
 import QuestionBasicsStep from './steps/QuestionBasicsStep';
 import QuestionContentStep from './steps/QuestionContentStep';
-import TestCasesStep from './steps/TestCasesStep';
 import ReviewStep from './steps/ReviewStep';
+import TestCasesStep from './steps/TestCasesStep';
 
 // Import duplicate detection components
 import DuplicateWarningModal from './components/DuplicateWarningModal';
@@ -179,21 +179,6 @@ const QuestionCreationWizard: React.FC<QuestionCreationWizardProps> = ({
       goToStep(stepId);
     }
   }, [clearErrors, goToStep, isStepAccessible]);
-
-  // ✅ Handle navigation with centralized save
-  const handleNext = useCallback(() => {
-    clearErrors();
-
-    if (!validateCurrentStep()) {
-      return;
-    }
-
-    if (currentStep === wizardSteps.length) {
-      handleSaveQuestion();
-    } else {
-      nextStep();
-    }
-  }, [clearErrors, validateCurrentStep, currentStep, wizardSteps.length, nextStep]);
 
   // ✅ Use centralized save method
   const handleSaveQuestion = useCallback(async () => {

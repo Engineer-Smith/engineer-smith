@@ -1,12 +1,22 @@
 // src/components/QuestionCreation/components/QuestionBasicFields.tsx - SIMPLIFIED UI
 
-import React, { useState } from 'react';
-import { 
-  FormGroup, Label, Input, Button, Badge, Collapse, Card, CardBody, Row, Col, Spinner, Alert
-} from 'reactstrap';
 import { AlertTriangle, CheckCircle } from 'lucide-react';
-import type { CreateQuestionData, Language, Tags } from '../../../types';
+import React, { useState } from 'react';
+import {
+  Alert,
+  Badge,
+  Button,
+  Card, CardBody,
+  Col,
+  Collapse,
+  FormGroup,
+  Input,
+  Label,
+  Row,
+  Spinner
+} from 'reactstrap';
 import { useTags } from '../../../hooks/useTags';
+import type { CreateQuestionData, Language, Tags } from '../../../types';
 
 interface QuestionBasicFieldsProps {
   questionData: Partial<CreateQuestionData>;
@@ -31,7 +41,6 @@ const QuestionBasicFields: React.FC<QuestionBasicFieldsProps> = ({
   onInputChange,
   validation,
   isFieldRequired = () => false,
-  getValidationWarnings = () => []
 }) => {
   const [showTagSelector, setShowTagSelector] = useState(false);
   
@@ -50,7 +59,6 @@ const QuestionBasicFields: React.FC<QuestionBasicFieldsProps> = ({
   const isDescriptionRequired = isFieldRequired('description');
   const isDifficultyRequired = isFieldRequired('difficulty');
   const isTagsRequired = isFieldRequired('tags');
-  const contextWarnings = getValidationWarnings();
 
   const getFieldErrors = (fieldName: string): string[] => {
     if (!validation?.errors) return [];

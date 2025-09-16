@@ -1,5 +1,20 @@
-// src/services/SocketService.ts - CORRECTED to match exact backend implementation
+// src/services/SocketService.ts - Complete implementation with notification support
 import { io, Socket } from 'socket.io-client';
+import type {
+  NotificationSocketEvent,
+  AttemptRequestSubmittedEvent,
+  AttemptRequestReviewedEvent,
+  AttemptRequestErrorEvent,
+  OverrideGrantedEvent,
+  OverrideErrorEvent,
+  NotificationBadgeUpdateEvent,
+  NotificationMarkedReadEvent,
+  NotificationsAllMarkedReadEvent,
+  NotificationsRecentEvent,
+  SubmitAttemptRequestData,
+  ReviewAttemptRequestData,
+  GrantAttemptsDirectlyData
+} from '../types/notifications';
 
 // CORRECTED: Event interfaces to match server exactly
 interface SessionJoinedEvent {
@@ -106,7 +121,7 @@ class SocketService {
       });
 
       this.socket.on('connect', () => {
-        console.log('SocketService: Connected successfully');
+        this.setupNotificationEventHandlers();
         resolve();
       });
 
@@ -115,8 +130,8 @@ class SocketService {
         reject(error);
       });
 
-      this.socket.on('disconnect', (reason) => {
-        console.log('SocketService: Disconnected:', reason);
+      this.socket.on('disconnect', (_reason) => {
+
       });
     });
   }
@@ -131,13 +146,16 @@ class SocketService {
     this.currentSessionId = null;
   }
 
+  // =====================
+  // TEST SESSION MANAGEMENT
+  // =====================
+
   // CORRECTED: Session management using exact backend event names
   async joinTestSession(sessionId: string): Promise<void> {
     if (!this.socket?.connected) {
       throw new Error('Socket not connected');
     }
 
-    console.log('SocketService: Joining test session:', sessionId);
     this.currentSessionId = sessionId;
     
     // ✅ Backend expects 'session:join'
@@ -149,7 +167,6 @@ class SocketService {
       throw new Error('Socket not connected');
     }
 
-    console.log('SocketService: Rejoining test session:', sessionId);
     this.currentSessionId = sessionId;
     
     // ✅ Backend expects 'session:rejoin'
@@ -158,8 +175,6 @@ class SocketService {
 
   async leaveTestSession(sessionId: string): Promise<void> {
     if (!this.socket?.connected) return;
-
-    console.log('SocketService: Leaving test session:', sessionId);
     
     // Backend doesn't have explicit leave handler, but emit anyway for completeness
     this.socket.emit('session:leave', { sessionId });
@@ -174,8 +189,6 @@ class SocketService {
     if (!this.socket?.connected) {
       throw new Error('Socket not connected');
     }
-
-    console.log('SocketService: Submitting answer via socket:', sessionId);
     
     // ✅ Backend expects 'answer:submit'
     this.socket.emit('answer:submit', {
@@ -189,15 +202,25 @@ class SocketService {
     if (!this.socket?.connected) {
       throw new Error('Socket not connected');
     }
-
-    console.log('SocketService: Requesting timer sync:', sessionId);
     
     // ✅ Backend expects 'timer:request_sync'
     this.socket.emit('timer:request_sync', { sessionId });
   }
 
   // =====================
-  // CORRECTED: Event listeners matching exact backend emissions
+  // NOTIFICATION EVENT HANDLERS SETUP
+  // =====================
+
+  private setupNotificationEventHandlers(): void {
+    if (!this.socket) return;
+
+    // Set up automatic unread count refresh on connect
+    this.getUnreadNotificationCount();
+
+  }
+
+  // =====================
+  // TEST SESSION EVENT LISTENERS
   // =====================
 
   // ✅ Backend emits 'session:joined'
@@ -314,6 +337,248 @@ class SocketService {
     
     this.socket.on('test:ready_for_completion', callback);
     return () => this.socket?.off('test:ready_for_completion', callback);
+  }
+
+  // =====================
+  // NOTIFICATION EVENT LISTENERS
+  // =====================
+
+  /**
+   * Listen for new notifications
+   */
+  onNotificationReceived(callback: (notification: NotificationSocketEvent) => void): () => void {
+    if (!this.socket) throw new Error('Socket not connected');
+    
+    this.socket.on('notification:new', callback);
+    return () => this.socket?.off('notification:new', callback);
+  }
+
+  /**
+   * Listen for notification badge updates
+   */
+  onNotificationBadgeUpdate(callback: (data: NotificationBadgeUpdateEvent) => void): () => void {
+    if (!this.socket) throw new Error('Socket not connected');
+    
+    this.socket.on('notification:badge_update', callback);
+    return () => this.socket?.off('notification:badge_update', callback);
+  }
+
+  /**
+   * Listen for refresh badge requests (for instructors)
+   */
+  onNotificationRefreshBadge(callback: () => void): () => void {
+    if (!this.socket) throw new Error('Socket not connected');
+    
+    this.socket.on('notification:refresh_badge', callback);
+    return () => this.socket?.off('notification:refresh_badge', callback);
+  }
+
+  /**
+   * Listen for notification marked as read confirmations
+   */
+  onNotificationMarkedRead(callback: (data: NotificationMarkedReadEvent) => void): () => void {
+    if (!this.socket) throw new Error('Socket not connected');
+    
+    this.socket.on('notification:marked_read', callback);
+    return () => this.socket?.off('notification:marked_read', callback);
+  }
+
+  /**
+   * Listen for all notifications marked as read confirmations
+   */
+  onNotificationsAllMarkedRead(callback: (data: NotificationsAllMarkedReadEvent) => void): () => void {
+    if (!this.socket) throw new Error('Socket not connected');
+    
+    this.socket.on('notifications:all_marked_read', callback);
+    return () => this.socket?.off('notifications:all_marked_read', callback);
+  }
+
+  /**
+   * Listen for recent notifications response
+   */
+  onNotificationsRecent(callback: (data: NotificationsRecentEvent) => void): () => void {
+    if (!this.socket) throw new Error('Socket not connected');
+    
+    this.socket.on('notifications:recent', callback);
+    return () => this.socket?.off('notifications:recent', callback);
+  }
+
+  /**
+   * Listen for unread count updates
+   */
+  onNotificationsUnreadCount(callback: (data: { count: number }) => void): () => void {
+    if (!this.socket) throw new Error('Socket not connected');
+    
+    this.socket.on('notifications:unread_count', callback);
+    return () => this.socket?.off('notifications:unread_count', callback);
+  }
+
+  // =====================
+  // ATTEMPT REQUEST EVENT LISTENERS
+  // =====================
+
+  /**
+   * Listen for attempt request submission confirmations
+   */
+  onAttemptRequestSubmitted(callback: (data: AttemptRequestSubmittedEvent) => void): () => void {
+    if (!this.socket) throw new Error('Socket not connected');
+    
+    this.socket.on('attempt_request:submitted', callback);
+    return () => this.socket?.off('attempt_request:submitted', callback);
+  }
+
+  /**
+   * Listen for attempt request review confirmations
+   */
+  onAttemptRequestReviewed(callback: (data: AttemptRequestReviewedEvent) => void): () => void {
+    if (!this.socket) throw new Error('Socket not connected');
+    
+    this.socket.on('attempt_request:reviewed', callback);
+    return () => this.socket?.off('attempt_request:reviewed', callback);
+  }
+
+  /**
+   * Listen for attempt request errors
+   */
+  onAttemptRequestError(callback: (data: AttemptRequestErrorEvent) => void): () => void {
+    if (!this.socket) throw new Error('Socket not connected');
+    
+    this.socket.on('attempt_request:error', callback);
+    return () => this.socket?.off('attempt_request:error', callback);
+  }
+
+  /**
+   * Listen for decision notifications from other instructors
+   */
+  onAttemptRequestDecisionMade(callback: (data: {
+    requestId: string;
+    decision: 'approved' | 'rejected';
+    reviewedBy: string;
+  }) => void): () => void {
+    if (!this.socket) throw new Error('Socket not connected');
+    
+    this.socket.on('attempt_request:decision_made', callback);
+    return () => this.socket?.off('attempt_request:decision_made', callback);
+  }
+
+  // =====================
+  // OVERRIDE EVENT LISTENERS
+  // =====================
+
+  /**
+   * Listen for override grant confirmations
+   */
+  onOverrideGranted(callback: (data: OverrideGrantedEvent) => void): () => void {
+    if (!this.socket) throw new Error('Socket not connected');
+    
+    this.socket.on('override:granted', callback);
+    return () => this.socket?.off('override:granted', callback);
+  }
+
+  /**
+   * Listen for override errors
+   */
+  onOverrideError(callback: (data: OverrideErrorEvent) => void): () => void {
+    if (!this.socket) throw new Error('Socket not connected');
+    
+    this.socket.on('override:error', callback);
+    return () => this.socket?.off('override:error', callback);
+  }
+
+  // =====================
+  // NOTIFICATION ACTIONS
+  // =====================
+
+  /**
+   * Request current unread notification count
+   */
+  async getUnreadNotificationCount(): Promise<void> {
+    if (!this.socket?.connected) {
+      throw new Error('Socket not connected');
+    }
+
+    console.log('SocketService: Requesting unread notification count');
+    this.socket.emit('notifications:get_unread_count');
+  }
+
+  /**
+   * Mark a notification as read
+   */
+  async markNotificationAsRead(notificationId: string): Promise<void> {
+    if (!this.socket?.connected) {
+      throw new Error('Socket not connected');
+    }
+
+    console.log('SocketService: Marking notification as read:', notificationId);
+    this.socket.emit('notifications:mark_read', { notificationId });
+  }
+
+  /**
+   * Mark all notifications as read
+   */
+  async markAllNotificationsAsRead(): Promise<void> {
+    if (!this.socket?.connected) {
+      throw new Error('Socket not connected');
+    }
+
+    console.log('SocketService: Marking all notifications as read');
+    this.socket.emit('notifications:mark_all_read');
+  }
+
+  /**
+   * Get recent notifications
+   */
+  async getRecentNotifications(limit: number = 10, page: number = 1): Promise<void> {
+    if (!this.socket?.connected) {
+      throw new Error('Socket not connected');
+    }
+
+    console.log('SocketService: Requesting recent notifications:', { limit, page });
+    this.socket.emit('notifications:get_recent', { limit, page });
+  }
+
+  // =====================
+  // ATTEMPT REQUEST ACTIONS
+  // =====================
+
+  /**
+   * Submit an attempt request via socket
+   */
+  async submitAttemptRequest(data: SubmitAttemptRequestData): Promise<void> {
+    if (!this.socket?.connected) {
+      throw new Error('Socket not connected');
+    }
+
+    console.log('SocketService: Submitting attempt request:', data);
+    this.socket.emit('attempt_request:submit', data);
+  }
+
+  /**
+   * Review an attempt request via socket
+   */
+  async reviewAttemptRequest(data: ReviewAttemptRequestData): Promise<void> {
+    if (!this.socket?.connected) {
+      throw new Error('Socket not connected');
+    }
+
+    console.log('SocketService: Reviewing attempt request:', data);
+    this.socket.emit('attempt_request:review', data);
+  }
+
+  // =====================
+  // OVERRIDE ACTIONS
+  // =====================
+
+  /**
+   * Grant attempts directly via socket
+   */
+  async grantAttemptsDirectly(data: GrantAttemptsDirectlyData): Promise<void> {
+    if (!this.socket?.connected) {
+      throw new Error('Socket not connected');
+    }
+
+    console.log('SocketService: Granting attempts directly:', data);
+    this.socket.emit('override:grant_attempts', data);
   }
 
   // =====================

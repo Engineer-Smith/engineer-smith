@@ -1,42 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import Editor from '@monaco-editor/react';
 import {
-  Container,
-  Row,
-  Col,
-  Card,
-  CardBody,
-  CardHeader,
-  Button,
-  ButtonGroup,
-  Badge,
-  Progress,
-  Alert,
-  Spinner,
-  Form,
-  FormGroup,
-  Input,
-  Label
-} from 'reactstrap';
-import {
+  CheckCircle,
   ChevronLeft,
   ChevronRight,
-  Clock,
-  FileText,
-  CheckCircle,
   Circle,
-  Play,
-  Square,
-  Code,
-  List,
+  Clock,
   Eye,
-  EyeOff,
+  FileText,
   Flag,
-  RotateCcw
+  RotateCcw,
+  Square
 } from 'lucide-react';
-import Editor from '@monaco-editor/react';
-import { useAuth } from '../../context/AuthContext';
-import apiService from '../../services/ApiService';
-import type { Test, Question, TestSession, TestSessionQuestion, Language, QuestionType } from '../../types';
+import React, { useEffect, useState } from 'react';
+import {
+  Alert,
+  Badge,
+  Button,
+  Col,
+  Container,
+  Input,
+  Label,
+  Progress,
+  Row,
+  Spinner
+} from 'reactstrap';
+import type { Language, Question, Test, TestSession } from '../../types';
 
 // Monaco language mapping
 const getMonacoLanguage = (language?: Language): string => {
@@ -74,18 +62,13 @@ interface FlattenedQuestion extends Question {
 }
 
 const TestTakingInterface: React.FC<TestTakingInterfaceProps> = ({
-  testSession,
   test,
   mode = 'taking',
   onBack,
   title
 }) => {
-  const { user } = useAuth();
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, any>>({});
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [timeRemaining, setTimeRemaining] = useState<number>(0);
   const [flaggedQuestions, setFlaggedQuestions] = useState<Set<number>>(new Set());
 
   const isPreviewMode = mode === 'preview';
@@ -148,12 +131,6 @@ const TestTakingInterface: React.FC<TestTakingInterfaceProps> = ({
     }
   };
 
-  const goToQuestion = (index: number) => {
-    if (index >= 0 && index < totalQuestions) {
-      setCurrentQuestionIndex(index);
-    }
-  };
-
   // Answer handling
   const handleAnswerChange = (questionId: string, answer: any) => {
     if (!isPreviewMode) {
@@ -206,15 +183,6 @@ const TestTakingInterface: React.FC<TestTakingInterfaceProps> = ({
 
   // Progress calculation
   const progressPercentage = totalQuestions > 0 ? ((currentQuestionIndex + 1) / totalQuestions) * 100 : 0;
-
-  // Debug logging
-  useEffect(() => {
-    console.log('TestTakingInterface: Component mounted/updated');
-    console.log('TestTakingInterface: Test data:', test);
-    console.log('TestTakingInterface: Flattened questions:', flattenedQuestions);
-    console.log('TestTakingInterface: Current question:', currentQuestion);
-    console.log('TestTakingInterface: Total questions:', totalQuestions);
-  }, [test, flattenedQuestions, currentQuestion, totalQuestions]);
 
   if (!test) {
     return (

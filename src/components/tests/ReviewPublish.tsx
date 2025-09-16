@@ -1,39 +1,34 @@
-import React, { useState, useEffect } from 'react';
 import {
-    Row,
-    Col,
+    AlertTriangle,
+    Bookmark,
+    Building,
+    CheckCircle,
+    Edit3,
+    Eye,
+    Globe,
+    Info,
+    Send
+} from 'lucide-react';
+import React, { useState } from 'react';
+import {
+    Alert,
+    Badge,
+    Button,
+    ButtonGroup,
     Card,
     CardBody,
     CardTitle,
-    Button,
-    Alert,
-    Badge,
-    FormGroup,
-    Label,
-    Input,
+    Col,
     Modal,
-    ModalHeader,
     ModalBody,
     ModalFooter,
-    ButtonGroup
+    ModalHeader,
+    Row
 } from 'reactstrap';
-import {
-    ArrowLeft,
-    CheckCircle,
-    AlertTriangle,
-    Globe,
-    Building,
-    Eye,
-    Send,
-    Edit3,
-    Info,
-    Bookmark
-} from 'lucide-react';
-import apiService from '../../services/ApiService';
-import { createTestPayload, getTestScopeText, canCreateGlobalTests } from '../../types/createTest';
-import type { WizardStepProps } from '../../types/createTest';
-import type { TestStatus } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import apiService from '../../services/ApiService';
+import type { WizardStepProps } from '../../types/createTest';
+import { canCreateGlobalTests, createTestPayload, getTestScopeText } from '../../types/createTest';
 
 interface ValidationIssue {
     type: 'error' | 'warning' | 'suggestion';
@@ -43,7 +38,6 @@ interface ValidationIssue {
 
 const ReviewPublish: React.FC<WizardStepProps> = ({
     testData,
-    setTestData,
     onPrevious,
     onComplete,
     setError,
@@ -115,18 +109,13 @@ const ReviewPublish: React.FC<WizardStepProps> = ({
     const hasErrors = validationIssues.some(issue => issue.type === 'error');
 
     const handlePublish = async () => {
-        console.log('=== DEBUG: handlePublish START ===');
-        console.log('publishStatus:', publishStatus);
-        console.log('testData.status before merge:', testData.status);
 
         if (!user || !['admin', 'instructor'].includes(user.role)) {
-            console.log('DEBUG: User permission check failed');
             setError('Unauthorized: Only admins or instructors can publish tests');
             return;
         }
 
         if (hasErrors) {
-            console.log('DEBUG: Validation errors exist:', validationIssues);
             setError('Please fix all validation errors before publishing');
             return;
         }
@@ -135,32 +124,16 @@ const ReviewPublish: React.FC<WizardStepProps> = ({
         setLoading?.(true);
 
         try {
-            console.log('=== DEBUG: Creating payload ===');
-
             // Merge publishStatus into testData
             const testDataWithStatus = { ...testData, status: publishStatus };
-            console.log('testDataWithStatus:', JSON.stringify(testDataWithStatus, null, 2));
-            console.log('testDataWithStatus.status:', testDataWithStatus.status);
 
             const payload = createTestPayload(testDataWithStatus);
-            console.log('=== DEBUG: Final payload ===');
-            console.log('payload:', JSON.stringify(payload, null, 2));
-            console.log('payload.status:', payload.status);
-
-            console.log('=== DEBUG: Calling API ===');
             // FIXED: createTest returns Test directly, no wrapper
             const createdTest = await apiService.createTest(payload);
-            console.log('=== DEBUG: API Response ===');
-            console.log('createdTest:', createdTest);
 
             if (!createdTest || !createdTest._id) {
-                console.log('DEBUG: API returned invalid data');
                 throw new Error('Failed to create test - invalid response');
             }
-
-            console.log('=== DEBUG: Success! ===');
-            console.log('Created test:', createdTest);
-            console.log('Created test status:', createdTest.status);
 
             setError(null);
             onComplete?.();
@@ -170,7 +143,6 @@ const ReviewPublish: React.FC<WizardStepProps> = ({
             setError(error instanceof Error ? error.message : 'Failed to create test');
         } finally {
             setLoading?.(false);
-            console.log('=== DEBUG: handlePublish END ===');
         }
     };
 
@@ -179,18 +151,6 @@ const ReviewPublish: React.FC<WizardStepProps> = ({
             setError('Please fix validation errors before previewing');
             return;
         }
-
-        console.log('Preview Test Data:', {
-            title: testData.title,
-            description: testData.description,
-            testType: testData.testType,
-            languages: testData.languages,
-            tags: testData.tags,
-            settings: testData.settings,
-            sections: testData.settings.useSections ? testData.sections : undefined,
-            questions: !testData.settings.useSections ? testData.questions : undefined,
-            scope: testScopeText
-        });
         alert('Test data logged to console. Check developer tools for details.');
     };
 

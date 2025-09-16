@@ -1,7 +1,7 @@
 // src/components/QuestionCreation/components/SelectionCompleteStep.tsx
+import { ArrowLeft, ArrowRight, CheckCircle } from 'lucide-react';
 import React from 'react';
-import { Badge, Button, Alert } from 'reactstrap';
-import { CheckCircle, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Alert, Badge, Button } from 'reactstrap';
 import type { Language, QuestionCategory, QuestionType } from '../../../types';
 
 interface SelectionCompleteStepProps {
@@ -15,11 +15,8 @@ interface SelectionCompleteStepProps {
 }
 
 const SelectionCompleteStep: React.FC<SelectionCompleteStepProps> = ({
-  selectedLanguage,
   languageLabel,
-  selectedCategory,
   categoryLabel,
-  selectedQuestionType,
   questionTypeLabel,
   onResetToQuestionType
 }) => {

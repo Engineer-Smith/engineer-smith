@@ -36,7 +36,6 @@ const CodeDebuggingEditor: React.FC<CodeDebuggingEditorProps> = ({
   onInputChange,
   validation,
   isFieldRequired = () => false,
-  availableRuntimes = [],
   functionSignatures = [],
   securityRecommendations = [],
   selectedLanguage,

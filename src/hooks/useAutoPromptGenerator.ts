@@ -3,7 +3,7 @@
 // =====================================================
 
 import { useCallback } from 'react';
-import type { Language, QuestionCategory, QuestionType, Difficulty } from '../types';
+import type { Difficulty, Language } from '../types';
 
 // Test case generation templates based on language and difficulty
 interface TestCaseTemplate {

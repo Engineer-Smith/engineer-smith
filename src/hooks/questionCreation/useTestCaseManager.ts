@@ -1,4 +1,4 @@
-// src/hooks/questionCreation/useTestCaseManager.ts
+// src/hooks/questionCreation/useTestCaseManager.ts - FIXED to handle direct API responses
 import { useCallback } from 'react';
 import type { TestCase } from '../../types';
 import type { QuestionCreationState, QuestionCreationAction } from './types';
@@ -66,17 +66,11 @@ export const useTestCaseManager = (
         testCode: code
       };
 
-      console.log('Validating test cases with data:', testData);
-
-      // Call the API
+      // API now returns data directly (QuestionTestResult)
       const response = await ApiService.testQuestion(testData);
 
-      if (response.error) {
-        throw new Error(response.message || 'Test validation failed');
-      }
-
-      // Process the API response
-      const testResults = response.data?.testResults?.map((result: any, index: number) => ({
+      // Response is now the direct QuestionTestResult, not wrapped
+      const testResults = response.testResults?.map((result: any, index: number) => ({
         index,
         passed: result.passed,
         error: result.error,
@@ -85,7 +79,7 @@ export const useTestCaseManager = (
         executionTime: result.executionTime
       })) || [];
 
-      const allPassed = response.data?.overallPassed || false;
+      const allPassed = response.overallPassed || false;
 
       dispatch({
         type: 'SET_TEST_RESULTS',

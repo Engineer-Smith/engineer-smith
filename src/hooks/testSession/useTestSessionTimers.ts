@@ -53,7 +53,6 @@ export const useTestSessionTimers = (contextTimeRemaining?: number | null): Time
     if (timerState.timeRemaining > 0) {
       setClientTimeRemaining(timerState.timeRemaining);
       lastSyncRef.current = { time: timerState.timeRemaining, timestamp: Date.now() };
-      console.log(`Timer synced from socket: ${timerState.timeRemaining}s`);
     }
   }, [timerState.timeRemaining]); // Sync when socket updates
 
@@ -70,7 +69,6 @@ export const useTestSessionTimers = (contextTimeRemaining?: number | null): Time
 
     // Start/continue countdown
     if (!countdownRef.current && clientTimeRemaining > 0) {
-      console.log('Starting client countdown');
       countdownRef.current = window.setInterval(() => {
         setClientTimeRemaining(prev => {
           const newTime = Math.max(0, prev - 1);

@@ -1,10 +1,10 @@
 // src/components/QuestionFormComponent.tsx - UPDATED WITH EDIT SUPPORT
-import React, { useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import React from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Alert, Container } from 'reactstrap';
 import { QuestionCreationProvider } from '../context/QuestionCreationContext';
-import QuestionCreationWizard from './QuestionCreation/QuestionCreationWizard';
 import type { Question } from '../types';
-import { Container, Alert } from 'reactstrap';
+import QuestionCreationWizard from './QuestionCreation/QuestionCreationWizard';
 
 interface QuestionFormComponentProps {
     question?: Partial<Question>;
@@ -18,9 +18,6 @@ interface QuestionFormComponentProps {
 const QuestionFormComponent: React.FC<QuestionFormComponentProps> = ({
     question: initialQuestion = {},
     onSubmitSuccess,
-    submitLabel = 'Save Question',
-    showSubmitButton = true,
-    compact = false,
     onCancel,
 }) => {
     const navigate = useNavigate();
@@ -34,17 +31,6 @@ const QuestionFormComponent: React.FC<QuestionFormComponentProps> = ({
     // Determine which question data to use and mode
     const questionData = editQuestion || initialQuestion;
     const mode = isEditMode ? 'edit' : isDuplicateMode ? 'duplicate' : 'create';
-
-    useEffect(() => {
-        console.log('QuestionFormComponent rendered', {
-            isEditMode,
-            isDuplicateMode,
-            mode,
-            hasQuestionData: !!questionData,
-            questionId: questionData?._id,
-            questionTitle: questionData?.title
-        });
-    });
 
     const handleComplete = (questionId: string, question: Question) => {
         if (onSubmitSuccess) {

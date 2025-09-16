@@ -7,12 +7,10 @@ const CreateTestPage: React.FC = () => {
   const navigate = useNavigate();
 
   const handleCancel = () => {
-    console.log('CreateTestPage: User cancelled, navigating back to tests');
     navigate('/admin/tests');
   };
 
   const handleComplete = () => {
-    console.log('CreateTestPage: Test creation completed, navigating back with success message');
     
     // Navigate back to test management with success message
     navigate('/admin/tests', {

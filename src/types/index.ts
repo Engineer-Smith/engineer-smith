@@ -41,6 +41,7 @@ export type {
 // Export validation utilities
 export {
   VALID_COMBINATIONS,
+  QUESTION_TYPE_LANGUAGE_RULES,
   QUESTION_TYPE_CATEGORY_RULES,
   isValidRole,
   isValidLanguage,
@@ -55,6 +56,10 @@ export {
   isValidLanguageCategoryCombo,
   isValidQuestionTypeForCategory,
   getAllowedQuestionTypes,
+  getAllowedQuestionTypesForCategory,
+  isLanguageCategoryCombinationValid,
+  getSupportedCategoriesForLanguage,
+  isValidQuestionTypeForLanguageAndCategory,
   getAllValidTags,
   getTagsByCategory,
   formatTimeSpan,
@@ -342,7 +347,8 @@ export type {
   PaginatedAnalyticsResponse,
   OrganizationSummary,
   TestSummary,
-  ExportableAnalytics
+  ExportableAnalytics,
+  PopulatedResult
 } from './result';
 
 export {
@@ -491,6 +497,96 @@ export {
   getTotalQuestionCount,
   isUsingSection
 } from './createTest';
+
+// =====================
+// ADMIN DASHBOARD TYPES
+// =====================
+
+export type {
+  // Dashboard response interfaces
+  UserManagementDashboard,
+  UserDetailsDashboard,
+  UserListItem,
+  UserPerformanceOverview,
+  UserPerformanceTrends,
+  UserPerformanceBreakdown,
+  DetailedPerformanceMetric,
+  RecentTestActivity,
+  SessionBreakdown,
+  CreatedQuestionSummary,
+  CreatedTestSummary,
+
+  // API interfaces
+  UserDashboardFilters,
+  GetUserDashboardParams,
+  GetUserDetailsParams,
+
+  // Chart data interfaces
+  RegistrationTrendData,
+  RoleDistributionData,
+  PerformanceComparisonData,
+  ScoreTrendData,
+
+  // React hook interfaces
+  UseUserDashboard,
+  UseUserDetails,
+
+  // Component prop interfaces
+  UserManagementPageProps,
+  UserDetailsPageProps,
+  UserOverviewCardProps,
+  RecentActivityCardProps,
+  UserListTableProps,
+  ContentCreatorsCardProps,
+  OrganizationStatsCardProps,
+  UserProfileCardProps,
+  PerformanceOverviewCardProps,
+  ActivityTimelineProps,
+  CreatedContentTabsProps,
+
+  // Filter and search interfaces
+  UserSearchFilters,
+  PerformanceFilters,
+  AdvancedUserFilters,
+
+  // Error and state interfaces
+  DashboardError,
+  DashboardLoadingState,
+
+  // Action interfaces
+  UserAction,
+  BulkUserAction,
+  AdminActionContext,
+
+  // Analytics interfaces
+  UserAnalyticsData,
+  OrganizationAnalyticsData,
+
+  // Export and reporting
+  ExportOptions,
+  ReportRequest,
+
+  // API service interface
+  AdminApiService,
+
+  // Utility types
+  DashboardView,
+  UserManagementTab,
+  UserDetailsTab,
+
+  // Form interfaces
+  UserEditForm,
+  BulkActionForm,
+  FilterForm
+} from './admin';
+
+export {
+  // Type guards
+  isUserManagementDashboard,
+  isUserDetailsDashboard,
+  hasSuperOrgData,
+  hasContentData
+} from './admin';
 
 // =====================
 // UTILITY TYPE HELPERS (Generic helpers only)

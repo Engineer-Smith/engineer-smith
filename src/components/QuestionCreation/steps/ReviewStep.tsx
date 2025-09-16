@@ -23,11 +23,6 @@ const ReviewStep: React.FC = () => {
   } = useQuestionCreation();
 
   const {
-    selectedLanguage,
-    selectedCategory,
-    selectedQuestionType,
-    questionData,
-    testCases,
     error,
     testSuccess,
     creationSuccess

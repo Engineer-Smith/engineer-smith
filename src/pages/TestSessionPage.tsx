@@ -1,14 +1,14 @@
 // TestSessionPage.tsx - Complete implementation with proper abandon functionality
-import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Container, Row, Col, Alert, Spinner, Button, Badge, Progress } from 'reactstrap';
-import { AlertTriangle, Clock, WifiOff, Menu, X } from 'lucide-react';
+import { AlertTriangle, Clock, Menu, WifiOff, X } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import { useAuth } from '../context/AuthContext';
-import { useTestSession } from '../context/TestSessionContext';
+import { Alert, Badge, Button, Col, Container, Progress, Row, Spinner } from 'reactstrap';
 import QuestionLayoutManager from '../components/TestSessions/QuestionLayoutManager';
 import QuestionOverviewModal from '../components/TestSessions/QuestionOverviewModal';
+import { useAuth } from '../context/AuthContext';
+import { useTestSession } from '../context/TestSessionContext';
 
 // Browser navigation protection hook
 const useTestSessionNavigation = (sessionId: string | null, hasUnsavedChanges: boolean = false) => {
@@ -123,7 +123,6 @@ const TestSessionContent: React.FC = React.memo(() => {
     skipQuestion,
     submitTest,
     abandonTest,
-    resetSession,
     timerDisplay,
     networkStatus,
     connectionStatus

@@ -1,18 +1,16 @@
 // pages/EditQuestionPage.tsx - FIXED FOR EDIT MODE SUPPORT
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { Container, Row, Col, Alert, Spinner, Button } from 'reactstrap';
-import { useAuth } from '../context/AuthContext';
-import apiService from '../services/ApiService';
-import { QuestionCreationProvider } from '../context/QuestionCreationContext';
+import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Alert, Button, Col, Container, Row, Spinner } from 'reactstrap';
 import QuestionCreationWizard from '../components/QuestionCreation/QuestionCreationWizard';
+import { QuestionCreationProvider } from '../context/QuestionCreationContext';
+import apiService from '../services/ApiService';
 import type { Question } from '../types';
 
 const EditQuestionPage: React.FC = () => {
   const { questionId } = useParams<{ questionId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useAuth();
 
   const [question, setQuestion] = useState<Question | null>(null);
   const [loading, setLoading] = useState(true);
@@ -29,21 +27,17 @@ const EditQuestionPage: React.FC = () => {
   useEffect(() => {
     if (editQuestionFromState) {
       // Use question data from navigation state (from ViewQuestionPage)
-      console.log('Using question from navigation state:', editQuestionFromState);
       setQuestion(editQuestionFromState);
       setLoading(false);
     } else if (duplicateData) {
       // We're duplicating a question
-      console.log('Using duplicate data:', duplicateData);
       setQuestion(duplicateData);
       setLoading(false);
     } else if (questionId) {
       // We're editing but don't have state data - fetch from API
-      console.log('Fetching question from API for edit mode');
       fetchQuestion();
     } else {
       // We're creating a new question
-      console.log('Creating new question');
       setLoading(false);
     }
   }, [questionId, editQuestionFromState, duplicateData]);
@@ -55,7 +49,6 @@ const EditQuestionPage: React.FC = () => {
       setLoading(true);
       setError(null);
 
-      console.log('Fetching question:', questionId);
       // FIXED: getQuestion returns Question directly, no wrapper
       const question = await apiService.getQuestion(questionId);
 
@@ -63,7 +56,6 @@ const EditQuestionPage: React.FC = () => {
         throw new Error('Failed to fetch question');
       }
 
-      console.log('Fetched question data:', question);
       setQuestion(question);
     } catch (error: any) {
       console.error('Error fetching question:', error);
@@ -73,8 +65,7 @@ const EditQuestionPage: React.FC = () => {
     }
   };
 
-  const handleComplete = (questionId: string, savedQuestion: Question) => {
-    console.log('Question operation completed:', { mode, questionId, savedQuestion });
+  const handleComplete = (questionId: string, _savedQuestion: Question) => {
 
     if (isEditMode) {
       // Navigate back to view page for edits
@@ -137,16 +128,6 @@ const EditQuestionPage: React.FC = () => {
       </Container>
     );
   }
-
-  // Debug logging
-  console.log('EditQuestionPage render:', {
-    mode,
-    hasQuestion: !!question,
-    questionId: question?._id,
-    questionTitle: question?.title,
-    questionType: question?.type,
-    questionLanguage: question?.language
-  });
 
   return (
     <QuestionCreationProvider

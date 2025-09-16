@@ -1,59 +1,49 @@
 // src/types/type-aliases.ts - Type alias utilities with rejoin support - FIXED IMPORTS
 // Import directly from source files to avoid circular dependencies
-import type { 
-  User, 
-  Organization,
-  Role,
-  Language,
-  QuestionType,
+import type {
+  AsyncState,
   Difficulty,
-  TestStatus,
-  SessionStatus,
-  QuestionStatus,
-  Tags,
-  PaginationParams,
+  Language,
+  Organization,
   PaginatedResponse,
-  LoadingState,
-  AsyncState
+  QuestionStatus,
+  QuestionType,
+  Role,
+  SessionStatus,
+  TestStatus,
+  User
 } from './common';
 
-import type { 
-  Question, 
+import type {
   CreateQuestionData,
-  QuestionTestResult
+  Question
 } from './question';
 
-import type { 
+import type {
   Test,
-  TestSection,
   TestQuestionReference,
+  TestSection,
   TestSettings,
   TestStats
 } from './test';
 
-import type { 
-  TestSession,
+import type {
+  SessionConflictState,
   SessionFinalScore,
-  QuestionData,
-  TestSessionQuestion,
-  CheckExistingSessionResponse,
-  RejoinSessionResponse,
   StartSessionRequest,
-  StartSessionConflictResponse,
-  SessionConflictState
+  TestSession,
+  TestSessionQuestion
 } from './session';
 
-import type { 
-  Result,
-  ResultQuestion,
-  ResultScore
+import type {
+  Result
 } from './result';
 
-import type { 
+import type {
   AuthState
 } from './auth';
 
-import type { 
+import type {
   CreateTestData
 } from './createTest';
 

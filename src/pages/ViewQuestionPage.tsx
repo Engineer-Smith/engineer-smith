@@ -1,62 +1,58 @@
 // pages/ViewQuestionPage.tsx
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import apiService from '../services/ApiService';
 import Editor from '@monaco-editor/react';
 import {
-  Container,
-  Row,
-  Col,
-  Card,
-  CardBody,
-  CardTitle,
-  CardText,
-  Button,
-  Badge,
-  Alert,
-  Spinner,
-  Table,
-  Progress,
-  CardHeader,
-  Input,
-  FormGroup,
-  Label,
-  Modal,
-  ModalHeader,
-  ModalBody,
-  ModalFooter
-} from 'reactstrap';
-import {
+  Activity,
+  AlertTriangle,
   ArrowLeft,
-  Edit,
-  Trash2,
-  Copy,
-  Eye,
-  Code,
-  CheckCircle,
-  XCircle,
-  Globe,
+  BarChart3,
+  Bug,
   Building,
   Calendar,
-  User,
-  BarChart3,
-  Target,
+  CheckCircle,
   Clock,
-  TrendingUp,
-  TrendingDown,
-  Users,
-  Award,
-  Activity,
-  PieChart,
-  Play,
-  TestTube,
-  Bug,
-  FileCode,
+  Code,
+  Copy,
+  Edit,
+  Eye,
+  Globe,
   Lightbulb,
-  AlertTriangle
+  Play,
+  Target,
+  Trash2,
+  TrendingDown,
+  TrendingUp,
+  User,
+  Users,
+  XCircle
 } from 'lucide-react';
-import type { Question, Language, QuestionType, Difficulty } from '../types';
+import React, { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  CardTitle,
+  Col,
+  Container,
+  FormGroup,
+  Input,
+  Label,
+  Modal,
+  ModalBody,
+  ModalFooter,
+  ModalHeader,
+  Progress,
+  Row,
+  Spinner,
+  Table
+} from 'reactstrap';
+import { useAuth } from '../context/AuthContext';
+import { useQuestionAnalytics } from '../hooks/questions/useQuestionAnalytics';
+import apiService from '../services/ApiService';
+import type { Difficulty, Language, Question, QuestionType } from '../types';
 
 const ViewQuestionPage: React.FC = () => {
   const { questionId } = useParams<{ questionId: string }>();
@@ -77,6 +73,14 @@ const ViewQuestionPage: React.FC = () => {
   const [trueFalseAnswer, setTrueFalseAnswer] = useState<boolean | null>(null);
   const [blankAnswers, setBlankAnswers] = useState<{ [key: string]: string }>({});
   const [studentCode, setStudentCode] = useState('');
+
+  const {
+    analytics: questionAnalytics,
+    loading: analyticsLoading,
+    error: analyticsError
+  } = useQuestionAnalytics(questionId || '');
+
+
 
   useEffect(() => {
     if (questionId) {
@@ -237,6 +241,251 @@ const ViewQuestionPage: React.FC = () => {
       case 'syntax': return 'Syntax';
       default: return category || '';
     }
+  };
+
+
+  const renderAnalyticsSection = () => {
+    if (!question) return null;
+
+    return (
+      <Card className="border-0 shadow-sm mb-4">
+        <CardHeader className="bg-white border-0 pb-0">
+          <CardTitle tag="h6" className="mb-0 d-flex align-items-center">
+            <BarChart3 className="me-2 text-primary" />
+            Question Analytics
+            {analyticsLoading && <Spinner size="sm" className="ms-2" />}
+          </CardTitle>
+        </CardHeader>
+        <CardBody className="pt-3">
+          {analyticsError && (
+            <Alert color="warning" className="mb-3">
+              <small>Unable to load analytics: {analyticsError}</small>
+            </Alert>
+          )}
+
+          {!analyticsLoading && !questionAnalytics && !analyticsError && (
+            <Alert color="info" className="mb-3">
+              <div className="d-flex align-items-center">
+                <Activity className="me-2 icon-sm" />
+                <div>
+                  <strong>No Usage Data Yet</strong>
+                  <p className="mb-0 small">This question hasn't been used in any tests yet.</p>
+                </div>
+              </div>
+            </Alert>
+          )}
+
+          {questionAnalytics && (
+            <>
+              <Row className="g-3 mb-4">
+                <Col md={4}>
+                  <div className="text-center p-3 bg-primary bg-opacity-10 rounded">
+                    <Users className="text-primary mb-2 icon-lg" />
+                    <div className="fw-bold h5 mb-0">{questionAnalytics.totalAttempts}</div>
+                    <small className="text-muted">Total Attempts</small>
+                  </div>
+                </Col>
+                <Col md={4}>
+                  <div className="text-center p-3 bg-success bg-opacity-10 rounded">
+                    <Target className="text-success mb-2 icon-lg" />
+                    <div className="fw-bold h5 mb-0">
+                      {Math.round(questionAnalytics.successRate)}%
+                    </div>
+                    <small className="text-muted">Success Rate</small>
+                  </div>
+                </Col>
+                <Col md={4}>
+                  <div className="text-center p-3 bg-info bg-opacity-10 rounded">
+                    <Clock className="text-info mb-2 icon-lg" />
+                    <div className="fw-bold h5 mb-0">
+                      {Math.round(questionAnalytics.averageTime / 60)}m
+                    </div>
+                    <small className="text-muted">Avg. Time</small>
+                  </div>
+                </Col>
+              </Row>
+
+              {/* Detailed Analytics */}
+              <Row className="g-3 mb-4">
+                <Col md={6}>
+                  <div className="p-3 bg-light rounded">
+                    <h6 className="mb-3">Performance Breakdown</h6>
+                    <div className="d-flex justify-content-between align-items-center mb-2">
+                      <span className="small">Correct Answers:</span>
+                      <Badge color="success">{questionAnalytics.correctAttempts}</Badge>
+                    </div>
+                    <div className="d-flex justify-content-between align-items-center mb-2">
+                      <span className="small">Incorrect Answers:</span>
+                      <Badge color="danger">
+                        {questionAnalytics.totalAttempts - questionAnalytics.correctAttempts}
+                      </Badge>
+                    </div>
+                    <div className="d-flex justify-content-between align-items-center">
+                      <span className="small">Average Points:</span>
+                      <Badge color="info">{questionAnalytics.averagePoints.toFixed(1)}</Badge>
+                    </div>
+                  </div>
+                </Col>
+                <Col md={6}>
+                  <div className="p-3 bg-light rounded">
+                    <h6 className="mb-3">Question Details</h6>
+                    <div className="d-flex justify-content-between align-items-center mb-2">
+                      <span className="small">Type:</span>
+                      <Badge color="secondary">{questionAnalytics.questionType}</Badge>
+                    </div>
+                    <div className="d-flex justify-content-between align-items-center mb-2">
+                      <span className="small">Language:</span>
+                      <Badge color="secondary">{questionAnalytics.language}</Badge>
+                    </div>
+                    <div className="d-flex justify-content-between align-items-center mb-2">
+                      <span className="small">Difficulty:</span>
+                      <Badge color={getDifficultyColor(questionAnalytics.difficulty as any)}>
+                        {questionAnalytics.difficulty}
+                      </Badge>
+                    </div>
+                    {questionAnalytics.category && (
+                      <div className="d-flex justify-content-between align-items-center">
+                        <span className="small">Category:</span>
+                        <Badge color="dark">{questionAnalytics.category}</Badge>
+                      </div>
+                    )}
+                  </div>
+                </Col>
+              </Row>
+
+              {/* Success Rate Progress Bar */}
+              <div className="mb-4">
+                <div className="d-flex justify-content-between align-items-center mb-2">
+                  <h6 className="mb-0">Success Rate</h6>
+                  <span className="fw-bold">{Math.round(questionAnalytics.successRate)}%</span>
+                </div>
+                <Progress
+                  value={questionAnalytics.successRate}
+                  color={
+                    questionAnalytics.successRate >= 70 ? 'success' :
+                      questionAnalytics.successRate >= 50 ? 'warning' : 'danger'
+                  }
+                  className="mb-1"
+                  style={{ height: '8px' }}
+                />
+                <small className="text-muted">
+                  {questionAnalytics.correctAttempts} correct out of {questionAnalytics.totalAttempts} attempts
+                </small>
+              </div>
+
+              {/* Recommendations */}
+              {questionAnalytics.totalAttempts > 5 && (
+                <div className="mt-4">
+                  <h6 className="mb-3">Recommendations</h6>
+                  <div className="alert alert-light border-start border-4 border-info">
+                    {questionAnalytics.successRate < 30 ? (
+                      <div className="d-flex align-items-start">
+                        <TrendingDown className="text-danger me-2 mt-1 icon-sm" />
+                        <div>
+                          <strong className="text-danger">Low Success Rate</strong>
+                          <p className="mb-0 small text-muted">
+                            This question has a very low success rate ({Math.round(questionAnalytics.successRate)}%).
+                            Consider reviewing the question difficulty, clarity, or providing additional learning materials.
+                          </p>
+                        </div>
+                      </div>
+                    ) : questionAnalytics.successRate > 90 ? (
+                      <div className="d-flex align-items-start">
+                        <TrendingUp className="text-success me-2 mt-1 icon-sm" />
+                        <div>
+                          <strong className="text-success">High Success Rate</strong>
+                          <p className="mb-0 small text-muted">
+                            This question has a very high success rate ({Math.round(questionAnalytics.successRate)}%).
+                            It might be too easy for the intended difficulty level.
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="d-flex align-items-start">
+                        <Target className="text-success me-2 mt-1 icon-sm" />
+                        <div>
+                          <strong className="text-success">Good Performance</strong>
+                          <p className="mb-0 small text-muted">
+                            This question has a balanced success rate ({Math.round(questionAnalytics.successRate)}%)
+                            and appears to be well-calibrated for its difficulty level.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Time Analysis */}
+              {questionAnalytics.averageTime > 0 && (
+                <div className="mt-4">
+                  <h6 className="mb-3">Time Analysis</h6>
+                  <div className="p-3 bg-light rounded">
+                    <div className="row g-3">
+                      <div className="col-md-6">
+                        <div className="text-center">
+                          <Clock className="text-info mb-2 icon-md" />
+                          <div className="fw-bold">{Math.round(questionAnalytics.averageTime)}s</div>
+                          <small className="text-muted">Average Time</small>
+                        </div>
+                      </div>
+                      <div className="col-md-6">
+                        <div className="text-center">
+                          <Activity className="text-warning mb-2 icon-md" />
+                          <div className="fw-bold">
+                            {questionAnalytics.averageTime > 180 ? 'Slow' :
+                              questionAnalytics.averageTime > 60 ? 'Moderate' : 'Quick'}
+                          </div>
+                          <small className="text-muted">Completion Speed</small>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Fallback to existing usageStats if no analytics available */}
+          {!questionAnalytics && !analyticsLoading && question.usageStats && (
+            <>
+              <Alert color="info" className="mb-3">
+                <small>Showing basic usage statistics (detailed analytics not available)</small>
+              </Alert>
+              {/* Keep your existing usageStats display here as fallback */}
+              <Row className="g-3">
+                <Col md={4}>
+                  <div className="text-center p-3 bg-primary bg-opacity-10 rounded">
+                    <Users className="text-primary mb-2 icon-lg" />
+                    <div className="fw-bold h5 mb-0">{question.usageStats.timesUsed || 0}</div>
+                    <small className="text-muted">Times Used in Tests</small>
+                  </div>
+                </Col>
+                <Col md={4}>
+                  <div className="text-center p-3 bg-success bg-opacity-10 rounded">
+                    <Target className="text-success mb-2 icon-lg" />
+                    <div className="fw-bold h5 mb-0">
+                      {question.usageStats.totalAttempts ?
+                        Math.round((question.usageStats.correctAttempts / question.usageStats.totalAttempts) * 100) : 0}%
+                    </div>
+                    <small className="text-muted">Success Rate</small>
+                  </div>
+                </Col>
+                <Col md={4}>
+                  <div className="text-center p-3 bg-info bg-opacity-10 rounded">
+                    <Clock className="text-info mb-2 icon-lg" />
+                    <div className="fw-bold h5 mb-0">
+                      {Math.round((question.usageStats.averageTime || 0) / 60)}m
+                    </div>
+                    <small className="text-muted">Avg. Completion Time</small>
+                  </div>
+                </Col>
+              </Row>
+            </>
+          )}
+        </CardBody>
+      </Card>
+    );
   };
 
   const renderStudentView = () => {
@@ -1033,85 +1282,7 @@ const ViewQuestionPage: React.FC = () => {
             )}
 
             {/* Question Analytics */}
-            <Card className="border-0 shadow-sm mb-4">
-              <CardHeader className="bg-white border-0 pb-0">
-                <CardTitle tag="h6" className="mb-0 d-flex align-items-center">
-                  <BarChart3 className="me-2 text-primary" />
-                  Question Analytics
-                </CardTitle>
-              </CardHeader>
-              <CardBody className="pt-3">
-                <Row className="g-3">
-                  <Col md={4}>
-                    <div className="text-center p-3 bg-primary bg-opacity-10 rounded">
-                      <Users className="text-primary mb-2 icon-lg" />
-                      <div className="fw-bold h5 mb-0">{question.usageStats?.timesUsed || 0}</div>
-                      <small className="text-muted">Times Used in Tests</small>
-                    </div>
-                  </Col>
-                  <Col md={4}>
-                    <div className="text-center p-3 bg-success bg-opacity-10 rounded">
-                      <Target className="text-success mb-2 icon-lg" />
-                      <div className="fw-bold h5 mb-0">
-                        {question.usageStats?.totalAttempts ?
-                          Math.round((question.usageStats.correctAttempts / question.usageStats.totalAttempts) * 100) : 0}%
-                      </div>
-                      <small className="text-muted">Success Rate</small>
-                    </div>
-                  </Col>
-                  <Col md={4}>
-                    <div className="text-center p-3 bg-info bg-opacity-10 rounded">
-                      <Clock className="text-info mb-2 icon-lg" />
-                      <div className="fw-bold h5 mb-0">
-                        {Math.round((question.usageStats?.averageTime || 0) / 60)}m
-                      </div>
-                      <small className="text-muted">Avg. Completion Time</small>
-                    </div>
-                  </Col>
-                </Row>
-
-                {/* Recommendations */}
-                {(question.usageStats?.totalAttempts || 0) > 5 && (
-                  <div className="mt-4">
-                    <h6 className="mb-3">Recommendations</h6>
-                    <div className="alert alert-light border-start border-4 border-info">
-                      {(question.usageStats?.successRate || 0) < 0.3 ? (
-                        <div className="d-flex align-items-start">
-                          <TrendingDown className="text-danger me-2 mt-1 icon-sm" />
-                          <div>
-                            <strong className="text-danger">Low Success Rate</strong>
-                            <p className="mb-0 small text-muted">
-                              This question has a very low success rate. Consider reviewing the question difficulty,
-                              clarity, or providing additional learning materials.
-                            </p>
-                          </div>
-                        </div>
-                      ) : (question.usageStats?.successRate || 0) > 0.9 ? (
-                        <div className="d-flex align-items-start">
-                          <TrendingUp className="text-success me-2 mt-1 icon-sm" />
-                          <div>
-                            <strong className="text-success">High Success Rate</strong>
-                            <p className="mb-0 small text-muted">
-                              This question has a very high success rate. It might be too easy for the intended difficulty level.
-                            </p>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="d-flex align-items-start">
-                          <Target className="text-success me-2 mt-1 icon-sm" />
-                          <div>
-                            <strong className="text-success">Good Performance</strong>
-                            <p className="mb-0 small text-muted">
-                              This question has a balanced success rate and appears to be well-calibrated.
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </CardBody>
-            </Card>
+            {renderAnalyticsSection()}
           </Col>
         </Row>
       </Container>

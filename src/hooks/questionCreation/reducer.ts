@@ -132,17 +132,22 @@ export function questionCreationReducer(
     // NEW: Initialize from existing question for edit/duplicate
     case 'INITIALIZE_FROM_QUESTION': {
       const { question, mode } = action.payload;
-      
+
       // Determine step accessibility and completion for edit mode
       const isEditMode = mode === 'edit';
       const isDuplicateMode = mode === 'duplicate';
-      
+
       const updatedSteps = state.steps.map(step => ({
         ...step,
-        isAccessible: isEditMode ? true : step.id === 1, // All steps accessible in edit mode
-        isCompleted: isEditMode, // Mark as completed in edit mode
-        isValid: isEditMode // Mark as valid in edit mode
+        isAccessible: isEditMode ? true : step.id === 1,
+        isCompleted: isEditMode,
+        isValid: isEditMode
       }));
+
+      // ✅ FIXED: Use language+category validation instead of category-only
+      const availableQuestionTypes = question.language && question.category
+        ? getAllowedQuestionTypes(question.language, question.category)
+        : [];
 
       return {
         ...state,
@@ -157,9 +162,9 @@ export function questionCreationReducer(
         selectedCategory: question.category,
         selectedQuestionType: question.type,
         availableCategories: question.language ? getValidCategories(question.language) : [],
-        availableQuestionTypes: question.category ? getAllowedQuestionTypes(question.category) : [],
+        availableQuestionTypes, // ✅ Now uses language+category rules
 
-        // Question data - handle duplicate vs edit
+        // ... rest of the case remains the same
         questionData: {
           title: isDuplicateMode ? `Copy of ${question.title}` : question.title || '',
           description: question.description || '',
@@ -167,7 +172,6 @@ export function questionCreationReducer(
           status: isDuplicateMode ? 'draft' : question.status || 'draft',
           tags: question.tags || [],
           isGlobal: isDuplicateMode ? false : question.isGlobal || false,
-          // Question type specific fields
           options: question.options || [],
           correctAnswer: question.correctAnswer,
           codeTemplate: question.codeTemplate || '',
@@ -227,7 +231,8 @@ export function questionCreationReducer(
     }
 
     case 'SET_CATEGORY': {
-      const availableTypes = getAllowedQuestionTypes(action.payload);
+      // Use the new language+category validation
+      const availableTypes = getAllowedQuestionTypes(state.selectedLanguage!, action.payload);
       const updatedQuestionData = {
         ...state.questionData,
         category: action.payload,
@@ -238,7 +243,7 @@ export function questionCreationReducer(
         ...state,
         selectedCategory: action.payload,
         selectedQuestionType: undefined,
-        availableQuestionTypes: availableTypes,
+        availableQuestionTypes: availableTypes, // Now uses language+category rules
         questionData: updatedQuestionData,
         duplicateCheckPerformed: false,
         lastDuplicateCheck: null
