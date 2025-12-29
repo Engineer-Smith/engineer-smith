@@ -296,9 +296,28 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const connectSocket = async () => {
       try {
+        // Get socket token through the API proxy
+        let socketToken = null;
+        try {
+          const response = await fetch('/auth/socket-token', {
+            credentials: 'include'
+          });
+          if (response.ok) {
+            const data = await response.json();
+            socketToken = data.socketToken;
+          }
+        } catch (tokenError) {
+          console.warn('SocketProvider: Could not fetch socket token:', tokenError);
+        }
+
+        if (!socketToken) {
+          console.warn('SocketProvider: No socket token available, skipping socket connection');
+          return;
+        }
+
         await socketService.connect({
           url: import.meta.env.VITE_SOCKET_URL || 'http://localhost:7000',
-          auth: { token: document.cookie.match(/accessToken=([^;]+)/)?.[1] }
+          auth: { token: socketToken }
         });
 
         setConnectionStatus(prev => ({
