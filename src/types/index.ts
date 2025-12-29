@@ -674,3 +674,66 @@ export type SimpleResponse = {
   message?: string;
   error?: string;
 };
+
+export type {
+  // Core types and enums
+  ProgrammingLanguage,
+  DifficultyLevel,
+  ChallengeStatus,
+  TrackCategory,
+  SubmissionStatus,
+  UserProgressStatus,
+
+  // Base interfaces
+  CodeConfig as ChallengeCodeConfig,  // Renamed to avoid conflict with question CodeConfig
+  TestCase as ChallengeTestCase,      // Renamed to avoid conflict with question TestCase
+  ChallengeExample,
+  UsageStats as ChallengeUsageStats,
+  TrackStats,
+
+  // Main interfaces
+  AdminChallenge,
+  AdminTrack,
+  PublicChallenge,
+  PublicTrack,
+  TrackChallenge,
+
+  // User progress
+  UserChallengeProgress,
+  UserTrackProgress,
+
+  // Submissions
+  ChallengeSubmission,
+
+  // Form data
+  CreateTrackFormData,
+  CreateChallengeFormData,
+
+  // API interfaces
+  AssignChallengeRequest,
+  SubmitCodeRequest,
+  TestCodeRequest,
+
+  // Analytics
+  ChallengeAnalytics,
+  TrackAnalytics,
+
+  // Filters
+  ChallengeFilters,
+  TrackFilters,
+
+  // Loading states
+  CodeChallengeLoadingStates,
+
+  // Errors
+  CodeChallengeError,
+  CodeChallengeErrors
+} from './codeChallenge';
+
+// Convenience aliases for commonly used types
+export type {
+  AdminTrack as Track,
+  AdminChallenge as Challenge,
+  PublicTrack as StudentTrack,
+  PublicChallenge as StudentChallenge
+} from './codeChallenge';

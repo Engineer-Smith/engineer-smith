@@ -853,4 +853,12 @@ export interface QuickActionsProps extends BaseComponentProps {
   isSuperOrgAdmin: boolean;
 }
 
-export type QuickActionType = 'addUser' | 'createQuestion' | 'createTest' | 'addOrganization';
+export type QuickActionType = 
+  | 'addUser'
+  | 'createQuestion' 
+  | 'createTest'
+  | 'addOrganization'
+  | 'createCodeChallenge'    // New
+  | 'createTrack'            // New
+  | 'viewSubmissions'        // New
+  | 'manageAnalytics';       // New

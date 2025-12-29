@@ -1,7 +1,7 @@
 // src/components/admin/dashboard/QuickActions.tsx
 import React from 'react';
 import { Card, CardBody, Button } from 'reactstrap';
-import { Users, BookOpen, FileText, Building } from 'lucide-react';
+import { Users, BookOpen, FileText, Building, Code, Book } from 'lucide-react';
 import type { QuickActionsProps } from '../../../types';
 
 const QuickActions: React.FC<QuickActionsProps> = ({ 
@@ -44,6 +44,28 @@ const QuickActions: React.FC<QuickActionsProps> = ({
           <FileText className="me-2 icon-sm" />
           Create Test
         </Button>
+        {userRole === 'admin' && (
+          <>
+            <Button 
+              color="warning"
+              size="sm"
+              onClick={() => onAction('createCodeChallenge')}
+              className="d-flex align-items-center"
+            >
+              <Code className="me-2 icon-sm" />
+              Create Challenge
+            </Button>
+            <Button 
+              color="secondary"
+              size="sm"
+              onClick={() => onAction('createTrack')}
+              className="d-flex align-items-center"
+            >
+              <Book className="me-2 icon-sm" />
+              Create Track
+            </Button>
+          </>
+        )}
         {isSuperOrgAdmin && userRole === 'admin' && (
           <Button 
             color="danger"

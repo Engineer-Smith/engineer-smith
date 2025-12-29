@@ -60,7 +60,7 @@ class ApiService {
 
   constructor() {
     this.client = axios.create({
-      baseURL: import.meta.env.VITE_API_URL || 'http://localhost:7000',
+      baseURL: '/',
       headers: { 'Content-Type': 'application/json' },
       withCredentials: true,
     });
@@ -154,7 +154,7 @@ class ApiService {
   }
 
   getSSOLoginUrl(): string {
-    return `${this.client.defaults.baseURL}/auth/login/sso`;
+    return 'https://engineer-smith-back-end.onrender.com/auth/login/sso';
   }
 
   async checkAuthStatus(): Promise<{ success: boolean; authenticated: boolean; user?: User }> {
@@ -1146,6 +1146,622 @@ class ApiService {
     const response = await this.client.patch(`/api/manual-scoring/results/${resultId}/override-score`, data);
     return response.data;
   }
+
+  // =====================================================
+  // CODE CHALLENGE API METHODS
+  // =====================================================
+
+  /**
+   * Get all code challenges with filtering
+   */
+  async getCodeChallenges(params: {
+    language?: string;
+    difficulty?: 'easy' | 'medium' | 'hard';
+    topic?: string;
+    page?: number;
+    limit?: number;
+    solved?: boolean;
+    sortBy?: 'createdAt' | 'difficulty' | 'popular' | 'success-rate';
+  } = {}): Promise<{
+    success: boolean;
+    challenges: Array<{
+      _id: string;
+      title: string;
+      slug: string;
+      description: string;
+      difficulty: 'easy' | 'medium' | 'hard';
+      supportedLanguages: string[];
+      topics: string[];
+      tags: string[];
+      usageStats: {
+        totalAttempts: number;
+        successfulSolutions: number;
+        successRate: number;
+      };
+      userProgress?: {
+        status: string;
+        totalAttempts: number;
+        solved: boolean;
+      };
+    }>;
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      pages: number;
+    };
+  }> {
+    const response = await this.client.get('/api/code-challenges/challenges', { params });
+    return response.data;
+  }
+
+  /**
+   * Get specific code challenge by ID
+   */
+  async getCodeChallenge(challengeId: string): Promise<{
+    success: boolean;
+    challenge: {
+      _id: string;
+      title: string;
+      slug: string;
+      description: string;
+      problemStatement: string;
+      difficulty: 'easy' | 'medium' | 'hard';
+      supportedLanguages: string[];
+      topics: string[];
+      tags: string[];
+      examples: Array<{
+        input: string;
+        output: string;
+        explanation: string;
+      }>;
+      constraints: string[];
+      testCases: Array<{
+        name: string;
+        args: any[];
+        expected: any;
+        hidden: boolean;
+      }>;
+      codeConfig: {
+        [language: string]: {
+          runtime: string;
+          entryFunction: string;
+          timeoutMs: number;
+        };
+      };
+      startingCode: {
+        [language: string]: string;
+      };
+      timeComplexity?: string;
+      spaceComplexity?: string;
+      hints: string[];
+    };
+    userProgress?: {
+      status: string;
+      totalAttempts: number;
+      solved: boolean;
+    };
+    recentSubmissions: Array<{
+      language: string;
+      status: string;
+      submittedAt: string;
+      passedTests: number;
+      totalTests: number;
+    }>;
+  }> {
+    const response = await this.client.get(`/api/code-challenges/challenges/${challengeId}`);
+    return response.data;
+  }
+
+  /**
+   * Test code against sample test cases (no submission created)
+   */
+  async testChallengeCode(challengeId: string, data: {
+    code: string;
+    language: string;
+  }): Promise<{
+    success: boolean;
+    results: {
+      success: boolean;
+      testResults: Array<{
+        testName: string;
+        testCaseIndex: number;
+        passed: boolean;
+        actualOutput: string;
+        expectedOutput: string;
+        executionTime: number;
+        consoleLogs: any[];
+        error: string | null;
+      }>;
+      overallPassed: boolean;
+      totalTestsPassed: number;
+      totalTests: number;
+      consoleLogs: any[];
+      executionError: string | null;
+      compilationError: string | null;
+      message: string;
+      testType: 'sample_tests';
+      totalSampleTests: number;
+      passedSampleTests: number;
+    };
+  }> {
+    const response = await this.client.post(`/api/code-challenges/challenges/${challengeId}/test`, data, {
+      headers: this.getCsrfHeaders(),
+    });
+    return response.data;
+  }
+
+  /**
+   * Submit code for final evaluation (creates submission record)
+   */
+  async submitChallengeCode(challengeId: string, data: {
+    code: string;
+    language: string;
+    trackId?: string;
+    hasTestedCode: boolean;
+  }): Promise<{
+    success: boolean;
+    submissionId: string;
+    results: {
+      success: boolean;
+      testResults: Array<{
+        testName: string;
+        testCaseIndex: number;
+        passed: boolean;
+        actualOutput: string;
+        expectedOutput: string;
+        executionTime: number;
+        consoleLogs: any[];
+        error: string | null;
+      }>;
+      overallPassed: boolean;
+      totalTestsPassed: number;
+      totalTests: number;
+      consoleLogs: any[];
+      executionError: string | null;
+      compilationError: string | null;
+    };
+    userProgress: {
+      status: string;
+      totalAttempts: number;
+      solved: boolean;
+    };
+    crossTrackInsights?: any[];
+  }> {
+    const response = await this.client.post(`/api/code-challenges/challenges/${challengeId}/submit`, data, {
+      headers: this.getCsrfHeaders(),
+    });
+    return response.data;
+  }
+
+  /**
+   * Get user's code challenge dashboard
+   */
+  async getCodeChallengeDashboard(): Promise<{
+    success: boolean;
+    dashboard: {
+      challengeStats: {
+        totalAttempted: number;
+        totalSolved: number;
+        javascriptSolved: number;
+        pythonSolved: number;
+        dartSolved: number;
+      };
+      trackStats: {
+        totalEnrolled: number;
+        totalCompleted: number;
+        totalInProgress: number;
+      };
+      recentSubmissions: Array<{
+        challengeId: string;
+        language: string;
+        status: string;
+        submittedAt: string;
+        passedTests: number;
+        totalTests: number;
+      }>;
+      recentActivity: any[];
+      streaks: any;
+    };
+  }> {
+    const response = await this.client.get('/api/code-challenges/dashboard');
+    return response.data;
+  }
+
+  /**
+   * Get all tracks
+   */
+  async getCodeChallengeTracks(params: {
+    language?: string;
+    category?: string;
+    difficulty?: string;
+    featured?: boolean;
+  } = {}): Promise<{
+    success: boolean;
+    tracks: Array<{
+      _id: string;
+      title: string;
+      slug: string;
+      description: string;
+      language: string;
+      difficulty: string;
+      challenges: number; // Just the count in listing
+    }>;
+  }> {
+    const response = await this.client.get('/api/code-challenges/tracks', { params });
+    return response.data;
+  }
+
+  /**
+   * Get specific track with challenges
+   */
+  async getCodeChallengeTrack(language: string, trackSlug: string): Promise<{
+    success: boolean;
+    track: {
+      _id: string;
+      title: string;
+      slug: string;
+      description: string;
+      language: string;
+      difficulty: string;
+      challenges: Array<{
+        challengeId: string;
+        order: number;
+        isOptional: boolean;
+        unlockAfter?: string;
+        challenge: {
+          _id: string;
+          title: string;
+          difficulty: string;
+        };
+        userProgress?: any;
+        isUnlocked: boolean;
+      }>;
+      userProgress?: {
+        status: string;
+        completedChallenges: number;
+        totalChallenges: number;
+      };
+    };
+  }> {
+    const response = await this.client.get(`/api/code-challenges/tracks/${language}/${trackSlug}`);
+    return response.data;
+  }
+
+  /**
+   * Enroll in a track
+   */
+  async enrollInTrack(language: string, trackSlug: string): Promise<{
+    success: boolean;
+    message: string;
+    userProgress: any;
+  }> {
+    const response = await this.client.post(`/api/code-challenges/tracks/${language}/${trackSlug}/enroll`, {}, {
+      headers: this.getCsrfHeaders(),
+    });
+    return response.data;
+  }
+
+  /**
+   * Get user's track progress
+   */
+  async getTrackProgress(language: string, trackSlug: string): Promise<{
+    success: boolean;
+    track: any;
+    userProgress: any;
+  }> {
+    const response = await this.client.get(`/api/code-challenges/tracks/${language}/${trackSlug}/progress`);
+    return response.data;
+  }
+
+  // =====================================================
+  // ADMIN CODE CHALLENGE METHODS - Add these to ApiService
+  // =====================================================
+
+  /**
+   * Create new challenge (admin only)
+   */
+  async createCodeChallenge(data: {
+    title: string;
+    description: string;
+    problemStatement: string;
+    difficulty: 'easy' | 'medium' | 'hard';
+    supportedLanguages: string[];
+    topics: string[];
+    tags: string[];
+    examples: Array<{
+      input: string;
+      output: string;
+      explanation: string;
+    }>;
+    constraints: string[];
+    hints: string[];
+    codeConfig: {
+      [language: string]: {
+        runtime: string;
+        entryFunction: string;
+        timeoutMs: number;
+      };
+    };
+    startingCode: {
+      [language: string]: string;
+    };
+    testCases: Array<{
+      name: string;
+      args: any[];
+      expected: any;
+      hidden: boolean;
+    }>;
+    solutionCode?: {
+      [language: string]: string;
+    };
+    editorial?: string;
+    timeComplexity?: string;
+    spaceComplexity?: string;
+    companyTags?: string[];
+    isPremium?: boolean;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    challenge: any;
+  }> {
+    const response = await this.client.post('/api/code-challenges/admin/challenges', data, {
+      headers: this.getCsrfHeaders(),
+    });
+    return response.data;
+  }
+
+  /**
+   * Get all challenges (admin only)
+   */
+  async getAllCodeChallengesAdmin(params: {
+    page?: number;
+    limit?: number;
+    difficulty?: string;
+    language?: string;
+    status?: string;
+  } = {}): Promise<{
+    success: boolean;
+    challenges: any[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      pages: number;
+    };
+  }> {
+    const response = await this.client.get('/api/code-challenges/admin/challenges', { params });
+    return response.data;
+  }
+
+  /**
+   * Update challenge (admin only)
+   */
+  async updateCodeChallenge(challengeNumber: string, data: any): Promise<{
+    success: boolean;
+    message: string;
+    challenge: any;
+  }> {
+    const response = await this.client.put(`/api/code-challenges/admin/challenges/${challengeNumber}`, data, {
+      headers: this.getCsrfHeaders(),
+    });
+    return response.data;
+  }
+
+  /**
+   * Delete/archive challenge (admin only)
+   */
+  async deleteCodeChallenge(challengeNumber: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    const response = await this.client.delete(`/api/code-challenges/admin/challenges/${challengeNumber}`, {
+      headers: this.getCsrfHeaders(),
+    });
+    return response.data;
+  }
+
+  /**
+   * Test challenge with solution code (admin only)
+   */
+  async testChallengeAdmin(challengeNumber: string, data: {
+    language: string;
+    code?: string;
+  }): Promise<{
+    success: boolean;
+    testResults: any;
+  }> {
+    const response = await this.client.post(`/api/code-challenges/admin/challenges/${challengeNumber}/test`, data, {
+      headers: this.getCsrfHeaders(),
+    });
+    return response.data;
+  }
+
+  /**
+   * Create new track (admin only)
+   */
+  async createCodeTrack(data: {
+    title: string;
+    description: string;
+    language: string;
+    category: string;
+    difficulty: string;
+    estimatedHours: number;
+    prerequisites?: string[];
+    learningObjectives?: string[];
+    challenges?: Array<{
+      challengeId: string;
+      order: number;
+      isOptional?: boolean;
+      unlockAfter?: number;
+    }>;
+    iconUrl?: string;
+    bannerUrl?: string;
+    isFeatured?: boolean;
+    isPremium?: boolean;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    track: any;
+  }> {
+    const response = await this.client.post('/api/code-challenges/admin/tracks', data, {
+      headers: this.getCsrfHeaders(),
+    });
+    return response.data;
+  }
+
+  /**
+   * Get all tracks (admin only)
+   */
+  async getAllCodeTracksAdmin(params: {
+    page?: number;
+    limit?: number;
+    language?: string;
+    category?: string;
+    status?: string;
+  } = {}): Promise<{
+    success: boolean;
+    tracks: any[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      pages: number;
+    };
+  }> {
+    const response = await this.client.get('/api/code-challenges/admin/tracks', { params });
+    return response.data;
+  }
+
+  /**
+   * Update track (admin only)
+   */
+  async updateCodeTrack(language: string, trackSlug: string, data: any): Promise<{
+    success: boolean;
+    message: string;
+    track: any;
+  }> {
+    const response = await this.client.put(`/api/code-challenges/admin/tracks/${language}/${trackSlug}`, data, {
+      headers: this.getCsrfHeaders(),
+    });
+    return response.data;
+  }
+
+  /**
+   * Delete track (admin only)
+   */
+  async deleteCodeTrack(language: string, trackSlug: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    const response = await this.client.delete(`/api/code-challenges/admin/tracks/${language}/${trackSlug}`, {
+      headers: this.getCsrfHeaders(),
+    });
+    return response.data;
+  }
+
+  /**
+   * Add challenge to track (admin only)
+   */
+  async addChallengeToTrack(language: string, trackSlug: string, data: {
+    challengeId: string;
+    order: number;
+    isOptional?: boolean;
+    unlockAfter?: number;
+  }): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    const response = await this.client.post(`/api/code-challenges/admin/tracks/${language}/${trackSlug}/challenges`, data, {
+      headers: this.getCsrfHeaders(),
+    });
+    return response.data;
+  }
+
+  /**
+   * Remove challenge from track (admin only)
+   */
+  async removeChallengeFromTrack(language: string, trackSlug: string, challengeId: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    const response = await this.client.delete(`/api/code-challenges/admin/tracks/${language}/${trackSlug}/challenges/${challengeId}`, {
+      headers: this.getCsrfHeaders(),
+    });
+    return response.data;
+  }
+
+  /**
+   * Get admin analytics (admin only)
+   */
+  async getCodeChallengeAnalytics(params: {
+    period?: '7d' | '30d' | '90d';
+  } = {}): Promise<{
+    success: boolean;
+    analytics: {
+      period: string;
+      challengeStats: any;
+      trackStats: any;
+      submissionStats: any;
+      userActivityStats: any;
+      popularChallenges: any[];
+      difficultChallenges: any[];
+    };
+  }> {
+    const response = await this.client.get('/api/code-challenges/admin/analytics', { params });
+    return response.data;
+  }
+
+  /**
+   * Get tracks overview for admin dashboard
+   */
+  async getTracksOverview(params: {
+    language?: string;
+  } = {}): Promise<{
+    success: boolean;
+    tracks: any[];
+  }> {
+    const response = await this.client.get('/api/code-challenges/admin/dashboard/tracks', { params });
+    return response.data;
+  }
+
+  /**
+   * Get challenges overview for admin dashboard
+   */
+  async getChallengesOverview(params: {
+    difficulty?: string;
+    language?: string;
+    status?: string;
+  } = {}): Promise<{
+    success: boolean;
+    challenges: any[];
+  }> {
+    const response = await this.client.get('/api/code-challenges/admin/dashboard/challenges', { params });
+    return response.data;
+  }
+
+  /**
+   * Get single track with detailed stats (admin view)
+   */
+  async getTrackById(language: string, trackSlug: string): Promise<{
+    success: boolean;
+    track: any;
+  }> {
+    const response = await this.client.get(`/api/code-challenges/admin/tracks/${language}/${trackSlug}`);
+    return response.data;
+  }
+
+  /**
+   * Get single challenge with detailed stats (admin view)
+   */
+  async getChallengeById(challengeNumber: string): Promise<{
+    success: boolean;
+    challenge: any;
+  }> {
+    const response = await this.client.get(`/api/code-challenges/admin/challenges/${challengeNumber}`);
+    return response.data;
+  }
+
 }
 
 export default new ApiService();

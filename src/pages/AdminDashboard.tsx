@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
+import { useCodeChallenge } from '../context/CodeChallengeContext';
 import apiService from '../services/ApiService';
 import {
   Container,
@@ -11,7 +12,7 @@ import {
   Alert,
   Spinner
 } from 'reactstrap';
-import { AlertCircle, Activity, BarChart3 } from 'lucide-react';
+import { AlertCircle, Activity, BarChart3, Code, Book, Zap, Trophy, Users, Target } from 'lucide-react';
 
 // Modular Components
 import DashboardHeader from '../components/admin/dashboard/DashboardHeader';
@@ -93,6 +94,18 @@ const AdminDashboard: React.FC = () => {
   const { user } = useAuth();
   const { notifications } = useNotifications();
   const navigate = useNavigate();
+  const {
+    dashboard: codeChallengesDashboard,
+    adminChallenges,
+    adminTracks,
+    analytics,
+    loading: codeChallengeLoading,
+    loadDashboard: loadCodeChallengesDashboard,
+    loadAllChallengesAdmin,
+    loadAllTracksAdmin,
+    loadAnalytics
+  } = useCodeChallenge();
+
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -131,11 +144,28 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  // Load code challenges data
+  const loadCodeChallengesData = async (): Promise<void> => {
+    if (!typedUser) return;
+
+    try {
+      await Promise.all([
+        loadCodeChallengesDashboard(),
+        loadAllChallengesAdmin(),
+        loadAllTracksAdmin(),
+        loadAnalytics('30d')
+      ]);
+    } catch (err) {
+      console.error('Error loading code challenges data:', err);
+    }
+  };
+
   useEffect(() => {
     if (typedUser) {
       fetchStats();
+      loadCodeChallengesData();
     }
-  }, [typedUser]);
+  }, []);
 
   // Handle navigation with proper typing
   const handleNavigation = (path: string): void => {
@@ -156,6 +186,12 @@ const AdminDashboard: React.FC = () => {
         break;
       case 'addOrganization':
         navigate('/admin/organizations/new');
+        break;
+      case 'createCodeChallenge':
+        navigate('/admin/code-challenges/challenges/new');
+        break;
+      case 'createTrack':
+        navigate('/admin/code-challenges/tracks/new');
         break;
       default:
         console.log(`Quick action: ${action}`);
@@ -221,7 +257,56 @@ const AdminDashboard: React.FC = () => {
     )
   );
 
-  // 3. ANALYTICS & LIVE SESSIONS - Real-time monitoring and analytics
+  // 3. CODE CHALLENGES - New section for code challenge management
+  const codeChallengeFeatures: DashboardFeature[] = [
+    {
+      title: 'Challenge Management',
+      description: 'Create and manage coding challenges with test cases',
+      path: '/admin/code-challenges/challenges',
+      icon: Code,
+      color: 'primary',
+      stats: codeChallengesDashboard ? `${adminChallenges.length} challenges` : 'Loading...',
+      access: ['admin']
+    },
+    {
+      title: 'Track Management',
+      description: 'Create learning tracks and organize challenges',
+      path: '/admin/code-challenges/tracks',
+      icon: Book,
+      color: 'info',
+      stats: codeChallengesDashboard ? `${adminTracks.length} tracks` : 'Loading...',
+      access: ['admin']
+    },
+    {
+      title: 'Submissions & Results',
+      description: 'View student submissions and performance analytics',
+      path: '/admin/code-challenges/submissions',
+      icon: Target,
+      color: 'success',
+      stats: codeChallengesDashboard ? `${codeChallengesDashboard.challengeStats?.totalAttempted || 0} submissions` : 'Loading...',
+      access: ['admin', 'instructor']
+    },
+    {
+      title: 'Code Challenge Analytics',
+      description: 'Performance insights and usage statistics',
+      path: '/admin/code-challenges/analytics',
+      icon: BarChart3,
+      color: 'warning',
+      stats: analytics ? `${analytics.challengeStats?.total || 0} total challenges` : 'Loading...',
+      access: ['admin']
+    },
+    {
+      title: 'Student Progress',
+      description: 'Monitor student progress across tracks and challenges',
+      path: '/admin/code-challenges/progress',
+      icon: Trophy,
+      color: 'secondary',
+      stats: codeChallengesDashboard ? `${codeChallengesDashboard.trackStats?.totalEnrolled || 0} enrollments` : 'Loading...',
+      access: ['admin', 'instructor']
+    }
+  ];
+
+  // 4. ANALYTICS & LIVE SESSIONS - Real-time monitoring and analytics
   const analyticsAndMonitoringFeatures: DashboardFeature[] = [
     // Custom real-time monitoring features
     {
@@ -250,7 +335,7 @@ const AdminDashboard: React.FC = () => {
     )
   ];
 
-  // 4. SYSTEM & CONFIGURATION - Platform settings and admin tools
+  // 5. SYSTEM & CONFIGURATION - Platform settings and admin tools
   const systemConfigFeatures: DashboardFeature[] = baseFeatures.filter(feature => 
     ['System', 'Settings', 'Configuration', 'Admin', 'Platform', 'Setup'].some(keyword => 
       feature.title.toLowerCase().includes(keyword.toLowerCase())
@@ -274,6 +359,46 @@ const AdminDashboard: React.FC = () => {
           />
         )}
 
+        {/* Code Challenges Stats Row */}
+        {codeChallengesDashboard && (
+          <Row className="mb-4">
+            <Col xs={12}>
+              <div className="bg-white rounded shadow-sm p-4">
+                <h5 className="mb-3 d-flex align-items-center">
+                  <Code className="me-2 icon-md text-primary" />
+                  Code Challenges Overview
+                </h5>
+                <Row>
+                  <Col md={3} xs={6} className="mb-3">
+                    <div className="text-center">
+                      <div className="h3 mb-1 text-primary">{codeChallengesDashboard.challengeStats?.totalAttempted || 0}</div>
+                      <small className="text-muted">Total Attempts</small>
+                    </div>
+                  </Col>
+                  <Col md={3} xs={6} className="mb-3">
+                    <div className="text-center">
+                      <div className="h3 mb-1 text-success">{codeChallengesDashboard.challengeStats?.totalSolved || 0}</div>
+                      <small className="text-muted">Solved</small>
+                    </div>
+                  </Col>
+                  <Col md={3} xs={6} className="mb-3">
+                    <div className="text-center">
+                      <div className="h3 mb-1 text-info">{codeChallengesDashboard.trackStats?.totalEnrolled || 0}</div>
+                      <small className="text-muted">Track Enrollments</small>
+                    </div>
+                  </Col>
+                  <Col md={3} xs={6} className="mb-3">
+                    <div className="text-center">
+                      <div className="h3 mb-1 text-warning">{adminChallenges.length}</div>
+                      <small className="text-muted">Active Challenges</small>
+                    </div>
+                  </Col>
+                </Row>
+              </div>
+            </Col>
+          </Row>
+        )}
+
         {/* Feature Cards - Organized by Logical Task-Based Sections */}
         
         {/* 1. USER MANAGEMENT SECTION */}
@@ -294,7 +419,16 @@ const AdminDashboard: React.FC = () => {
           sectionKey="content"
         />
 
-        {/* 3. STUDENT REQUESTS & APPROVALS SECTION */}
+        {/* 3. CODE CHALLENGES SECTION - NEW */}
+        <FeatureSection
+          title="Code Challenges Platform"
+          subtitle="Manage coding challenges, tracks, and student progress"
+          features={codeChallengeFeatures}
+          onNavigate={handleNavigation}
+          sectionKey="code-challenges"
+        />
+
+        {/* 4. STUDENT REQUESTS & APPROVALS SECTION */}
         {stats && (
           <StudentRequestsSection
             stats={stats}
@@ -303,7 +437,7 @@ const AdminDashboard: React.FC = () => {
           />
         )}
 
-        {/* 4. ANALYTICS & LIVE SESSIONS SECTION */}
+        {/* 5. ANALYTICS & LIVE SESSIONS SECTION */}
         <FeatureSection
           title="Analytics & Live Sessions"
           subtitle="Monitor active sessions, view results, and analyze performance"
@@ -312,7 +446,7 @@ const AdminDashboard: React.FC = () => {
           sectionKey="analytics"
         />
 
-        {/* 5. SYSTEM & CONFIGURATION SECTION */}
+        {/* 6. SYSTEM & CONFIGURATION SECTION */}
         <FeatureSection
           title="System & Configuration"
           subtitle="Platform settings, system administration, and configuration"
@@ -321,7 +455,7 @@ const AdminDashboard: React.FC = () => {
           sectionKey="system"
         />
 
-        {/* Quick Actions */}
+        {/* Quick Actions - Updated with Code Challenge actions */}
         <QuickActions
           onAction={handleQuickAction}
           userRole={typedUser.role}
