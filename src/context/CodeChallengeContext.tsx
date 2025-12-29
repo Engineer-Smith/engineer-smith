@@ -18,22 +18,13 @@ import type {
     PublicChallenge,
     PublicTrack,
     UserChallengeProgress,
-    UserTrackProgress,
-    ChallengeSubmission,
     CreateTrackFormData,
     CreateChallengeFormData,
     AssignChallengeRequest,
-    ChallengeTestResult,
     ChallengeFilters,
     TrackFilters,
     CodeChallengeLoadingStates,
     CodeChallengeErrors,
-    ProgrammingLanguage,
-    DifficultyLevel,
-    ChallengeStatus,
-    TrackCategory,
-    SubmissionStatus,
-    UserProgressStatus
 } from '../types/codeChallenge';
 
 // Local interfaces for context-specific needs

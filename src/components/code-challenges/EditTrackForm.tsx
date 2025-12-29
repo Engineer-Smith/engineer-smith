@@ -1,5 +1,5 @@
 // src/components/code-challenges/EditTrackForm.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Card,
   CardBody,

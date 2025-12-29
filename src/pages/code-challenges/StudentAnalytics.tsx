@@ -1,6 +1,6 @@
 // src/pages/admin/code-challenges/StudentAnalytics.tsx
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../../context/AuthContext';
+// import { useAuth } from '../../context/AuthContext';
 import { useCodeChallenge } from '../../context/CodeChallengeContext';
 import {
   Container,
@@ -14,13 +14,8 @@ import {
   Button,
   Input,
   InputGroup,
-  UncontrolledDropdown,
-  DropdownToggle,
-  DropdownMenu,
-  DropdownItem,
   Progress,
   Alert,
-  Spinner,
   Nav,
   NavItem,
   NavLink,
@@ -37,12 +32,8 @@ import {
   BarChart3,
   Activity,
   Download,
-  Filter,
-  Calendar,
   User,
   Code,
-  CheckCircle,
-  XCircle,
   AlertCircle,
   Eye
 } from 'lucide-react';
@@ -103,29 +94,29 @@ interface TrackAnalytics {
   }>;
 }
 
-interface ChallengeAnalytics {
-  challengeId: string;
-  title: string;
-  difficulty: string;
-  language: string;
-  totalAttempts: number;
-  uniqueAttempts: number;
-  successRate: number;
-  averageAttempts: number;
-  averageTime: number;
-  commonErrors: Array<{
-    error: string;
-    frequency: number;
-    percentage: number;
-  }>;
-  timeDistribution: {
-    under5min: number;
-    under15min: number;
-    under30min: number;
-    under1hour: number;
-    over1hour: number;
-  };
-}
+// interface ChallengeAnalytics {
+//   challengeId: string;
+//   title: string;
+//   difficulty: string;
+//   language: string;
+//   totalAttempts: number;
+//   uniqueAttempts: number;
+//   successRate: number;
+//   averageAttempts: number;
+//   averageTime: number;
+//   commonErrors: Array<{
+//     error: string;
+//     frequency: number;
+//     percentage: number;
+//   }>;
+//   timeDistribution: {
+//     under5min: number;
+//     under15min: number;
+//     under30min: number;
+//     under1hour: number;
+//     over1hour: number;
+//   };
+// }
 
 const StudentAnalytics: React.FC = () => {
   const { loadAnalytics } = useCodeChallenge();
@@ -139,7 +130,7 @@ const StudentAnalytics: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   
   // Mock data - In real implementation, this would come from API
-  const [studentsProgress, setStudentsProgress] = useState<StudentProgress[]>([
+  const [studentsProgress, _setStudentsProgress] = useState<StudentProgress[]>([
     {
       userId: '1',
       name: 'Alice Johnson',
@@ -179,7 +170,7 @@ const StudentAnalytics: React.FC = () => {
     }
   ]);
 
-  const [trackAnalytics, setTrackAnalytics] = useState<TrackAnalytics[]>([
+  const [trackAnalytics, _setTrackAnalytics] = useState<TrackAnalytics[]>([
     {
       trackId: '1',
       title: 'JavaScript Fundamentals',
@@ -197,7 +188,7 @@ const StudentAnalytics: React.FC = () => {
     }
   ]);
 
-  const [challengeAnalytics, setChallengeAnalytics] = useState<ChallengeAnalytics[]>([]);
+  // const [challengeAnalytics, 4setChallengeAnalytics] = useState<ChallengeAnalytics[]>([]);
 
   useEffect(() => {
     loadAnalytics(selectedTimeRange as '7d' | '30d' | '90d');

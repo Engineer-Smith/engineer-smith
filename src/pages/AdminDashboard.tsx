@@ -12,7 +12,7 @@ import {
   Alert,
   Spinner
 } from 'reactstrap';
-import { AlertCircle, Activity, BarChart3, Code, Book, Zap, Trophy, Users, Target } from 'lucide-react';
+import { AlertCircle, Activity, BarChart3, Code, Book, Trophy, Target } from 'lucide-react';
 
 // Modular Components
 import DashboardHeader from '../components/admin/dashboard/DashboardHeader';
@@ -99,7 +99,7 @@ const AdminDashboard: React.FC = () => {
     adminChallenges,
     adminTracks,
     analytics,
-    loading: codeChallengeLoading,
+    loading: _codeChallengeLoading,
     loadDashboard: loadCodeChallengesDashboard,
     loadAllChallengesAdmin,
     loadAllTracksAdmin,

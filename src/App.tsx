@@ -41,7 +41,7 @@ import PendingRequests from './pages/PendingRequests';
 import GrantAttemptsPage from './pages/GrantAttemptsPage';
 import { CodeChallengeProvider } from './context/CodeChallengeContext';
 // import ChallengeManagement from './pages/code-challenges/ChallengeManagement';
-import TrackManagement from './pages/code-challenges/TrackManagement';
+// import TrackManagement from './pages/code-challenges/TrackManagement';
 
 // Placeholder components for missing pages
 const PlaceholderPage = ({ title }: { title: string }) => (
@@ -578,14 +578,14 @@ function AppRoutes() {
           }
         /> */}
 
-        <Route
+        {/* <Route
           path='/admin/code-challenges/tracks/:language/:trackSlug'
           element={
             <AdminRoute>
               <TrackManagement />
             </AdminRoute>
           }
-        />
+        /> */}
 
         {/* ✅ UPDATED: Profile/Settings - Use ProtectedRoute for all roles */}
         <Route
