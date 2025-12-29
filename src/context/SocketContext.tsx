@@ -102,13 +102,13 @@ interface SocketContextType {
   connectionStatus: ConnectionStatus;
   isConnected: boolean;
   networkStatus: ReturnType<typeof useNetworkStatus>;
-  
+
   currentSessionId: string | null;
   joinSession: (sessionId: string) => Promise<void>;
   leaveSession: (sessionId: string) => Promise<void>;
-  
+
   timerState: TimerState;
-  
+
   // ENHANCED: Support both timer and notification events
   registerEventHandlers: (handlers: {
     // Timer events
@@ -116,7 +116,7 @@ interface SocketContextType {
     onSectionExpired?: (data: SectionExpiredEvent) => void;
     onTestCompleted?: (data: TestCompletedEvent) => void;
     onSessionError?: (data: SessionErrorEvent) => void;
-    
+
     // Notification events
     onNotificationReceived?: (data: NotificationReceivedEvent) => void;
     onNotificationBadgeUpdate?: (data: NotificationBadgeUpdateEvent) => void;
@@ -149,7 +149,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   });
 
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  
+
   const [timerState, setTimerState] = useState<TimerState>({
     timeRemaining: 0,
     isActive: false,
@@ -173,7 +173,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const cleanupFunctionsRef = useRef<(() => void)[]>([]);
   const countdownIntervalRef = useRef<number | null>(null);
-  
+
   // FIXED: Track if base socket handlers are registered
   const baseHandlersRegistered = useRef<boolean>(false);
 
@@ -184,18 +184,18 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     const startTime = Date.now();
-    
+
     countdownIntervalRef.current = window.setInterval(() => {
       const elapsed = Math.floor((Date.now() - startTime) / 1000);
       const newTimeRemaining = Math.max(0, initialTime - elapsed);
-      
+
       setTimerState(prev => {
         if (!prev.isActive || prev.isPaused) {
           return prev;
         }
 
         const isStillActive = newTimeRemaining > 0 && networkStatus.isOnline && connectionStatus.isConnected;
-        
+
         return {
           ...prev,
           timeRemaining: newTimeRemaining,
@@ -235,7 +235,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (shouldBePaused && !prev.isPaused && countdownIntervalRef.current) {
         stopCountdown();
       }
-      
+
       if (!shouldBePaused && prev.isPaused && prev.timeRemaining > 0) {
         startCountdown(prev.timeRemaining, Date.now());
       }
@@ -275,16 +275,16 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (socketService.isConnected()) {
         socketService.disconnect();
       }
-      setConnectionStatus(prev => ({ 
-        ...prev, 
+      setConnectionStatus(prev => ({
+        ...prev,
         isConnected: false,
-        sessionId: undefined 
+        sessionId: undefined
       }));
       setCurrentSessionId(null);
-      
+
       // FIXED: Reset registration flag
       baseHandlersRegistered.current = false;
-      
+
       stopCountdown();
       setTimerState({
         timeRemaining: 0,
@@ -297,12 +297,12 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const connectSocket = async () => {
       try {
         await socketService.connect({
-          url: import.meta.env.VITE_API_URL || 'http://localhost:7000',
+          url: import.meta.env.VITE_SOCKET_URL || 'http://localhost:7000',
           auth: { token: document.cookie.match(/accessToken=([^;]+)/)?.[1] }
         });
 
-        setConnectionStatus(prev => ({ 
-          ...prev, 
+        setConnectionStatus(prev => ({
+          ...prev,
           isConnected: true,
           lastConnectedAt: new Date(),
           reconnectAttempts: 0,
@@ -310,7 +310,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         // FIXED: Only register base handlers once per connection
         if (!baseHandlersRegistered.current) {
-          
+
           const cleanupFunctions: (() => void)[] = [];
 
           // =====================
@@ -325,9 +325,9 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
           cleanupFunctions.push(
             socketService.onTimerSync((data: TimerSyncEvent) => {
-              
+
               const syncTime = Date.now();
-              
+
               setTimerState(prev => {
                 const shouldBeActive = data.timeRemaining > 0 && networkStatus.isOnline && connectionStatus.isConnected;
                 const shouldBePaused = !networkStatus.isOnline || !connectionStatus.isConnected;
@@ -340,7 +340,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                   type: data.type,
                   isActive: shouldBeActive,
                   isPaused: shouldBePaused,
-                  currentSection: data.sectionIndex !== undefined ? { 
+                  currentSection: data.sectionIndex !== undefined ? {
                     index: data.sectionIndex,
                     name: `Section ${data.sectionIndex + 1}`
                   } : prev.currentSection,
@@ -361,9 +361,9 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
           cleanupFunctions.push(
             socketService.onSectionExpired((data: SectionExpiredEvent) => {
-              
+
               stopCountdown();
-              
+
               setTimerState(prev => ({
                 ...prev,
                 sectionIndex: data.newSectionIndex,
@@ -386,7 +386,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
           cleanupFunctions.push(
             socketService.onTestCompleted((data: TestCompletedEvent) => {
-              
+
               stopCountdown();
               setCurrentSessionId(null);
               setTimerState({
@@ -410,7 +410,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           cleanupFunctions.push(
             socketService.onSessionError((data: SessionErrorEvent) => {
               console.error('SocketProvider: Session error:', data);
-              
+
               toast.error(data.message, {
                 autoClose: 5000,
                 position: 'top-center',
@@ -430,7 +430,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (socketService.onNotificationReceived) {
             cleanupFunctions.push(
               socketService.onNotificationReceived((data: NotificationReceivedEvent) => {
-                
+
                 // FIXED: Only forward to registered handlers, don't process here
                 if (eventHandlerRefs.current.onNotificationReceived) {
                   eventHandlerRefs.current.onNotificationReceived(data);
@@ -442,7 +442,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (socketService.onNotificationBadgeUpdate) {
             cleanupFunctions.push(
               socketService.onNotificationBadgeUpdate((data: NotificationBadgeUpdateEvent) => {
-                
+
                 if (eventHandlerRefs.current.onNotificationBadgeUpdate) {
                   eventHandlerRefs.current.onNotificationBadgeUpdate(data);
                 }
@@ -453,7 +453,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (socketService.onNotificationsUnreadCount) {
             cleanupFunctions.push(
               socketService.onNotificationsUnreadCount((data: NotificationsUnreadCountEvent) => {
-                
+
                 if (eventHandlerRefs.current.onNotificationsUnreadCount) {
                   eventHandlerRefs.current.onNotificationsUnreadCount(data);
                 }
@@ -464,7 +464,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (socketService.onNotificationsRecent) {
             cleanupFunctions.push(
               socketService.onNotificationsRecent((data: NotificationsRecentEvent) => {
-                
+
                 if (eventHandlerRefs.current.onNotificationsRecent) {
                   eventHandlerRefs.current.onNotificationsRecent(data);
                 }
@@ -475,7 +475,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (socketService.onAttemptRequestSubmitted) {
             cleanupFunctions.push(
               socketService.onAttemptRequestSubmitted((data: AttemptRequestEvent) => {
-                
+
                 if (eventHandlerRefs.current.onAttemptRequestSubmitted) {
                   eventHandlerRefs.current.onAttemptRequestSubmitted(data);
                 }
@@ -486,7 +486,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (socketService.onAttemptRequestReviewed) {
             cleanupFunctions.push(
               socketService.onAttemptRequestReviewed((data: AttemptRequestEvent) => {
-                
+
                 if (eventHandlerRefs.current.onAttemptRequestReviewed) {
                   eventHandlerRefs.current.onAttemptRequestReviewed(data);
                 }
@@ -497,7 +497,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (socketService.onOverrideGranted) {
             cleanupFunctions.push(
               socketService.onOverrideGranted((data: OverrideGrantedEvent) => {
-                
+
                 if (eventHandlerRefs.current.onOverrideGranted) {
                   eventHandlerRefs.current.onOverrideGranted(data);
                 }
@@ -511,8 +511,8 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       } catch (error) {
         console.error('SocketProvider: Failed to connect socket:', error);
-        setConnectionStatus(prev => ({ 
-          ...prev, 
+        setConnectionStatus(prev => ({
+          ...prev,
           isConnected: false,
           reconnectAttempts: (prev.reconnectAttempts || 0) + 1,
         }));
@@ -569,7 +569,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const leaveSession = useCallback(async (sessionId: string) => {
     try {
       await socketService.leaveTestSession(sessionId);
-      
+
       if (currentSessionId === sessionId) {
         setCurrentSessionId(null);
         stopCountdown();
@@ -598,10 +598,10 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     onAttemptRequestReviewed?: (data: AttemptRequestEvent) => void;
     onOverrideGranted?: (data: OverrideGrantedEvent) => void;
   }) => {
-    
+
     // FIXED: Replace handlers instead of merging to prevent accumulation
     eventHandlerRefs.current = handlers;
-    
+
     return () => {
       eventHandlerRefs.current = {};
     };
@@ -628,7 +628,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 // Utility hooks (unchanged)
 export const useSocketConnection = () => {
   const { connectionStatus, isConnected, networkStatus } = useSocket();
-  
+
   const getConnectionMessage = () => {
     if (!networkStatus.isOnline) {
       return {
@@ -661,7 +661,7 @@ export const useSocketConnection = () => {
 
 export const useSocketSession = () => {
   const { currentSessionId, joinSession, leaveSession } = useSocket();
-  
+
   return {
     currentSessionId,
     joinSession,
