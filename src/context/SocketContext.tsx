@@ -316,7 +316,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
 
         await socketService.connect({
-          url: import.meta.env.VITE_SOCKET_URL || 'http://localhost:7000',
+          url: '/',
           auth: { token: socketToken }
         });
 
