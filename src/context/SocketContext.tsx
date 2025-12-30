@@ -1,4 +1,4 @@
-// src/context/SocketContext.tsx - FIXED to prevent double event registration
+// src/context/SocketContext.tsx - FIXED for graceful degradation and polling-only transport
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { toast } from 'react-toastify';
 import socketService from '../services/SocketService';
@@ -79,6 +79,7 @@ interface ConnectionStatus {
   sessionId?: string;
   lastConnectedAt?: Date;
   reconnectAttempts?: number;
+  socketDisabled?: boolean; // NEW: Track if socket is intentionally disabled
 }
 
 interface TimerState {
@@ -146,6 +147,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     isConnected: false,
     isOnline: networkStatus.isOnline,
     reconnectAttempts: 0,
+    socketDisabled: false,
   });
 
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -176,6 +178,11 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // FIXED: Track if base socket handlers are registered
   const baseHandlersRegistered = useRef<boolean>(false);
+  
+  // NEW: Track if socket has been disabled due to connection failures
+  const socketDisabledRef = useRef<boolean>(false);
+  const connectionAttemptsRef = useRef<number>(0);
+  const MAX_CONNECTION_ATTEMPTS = 3;
 
   // Timer countdown functions (unchanged)
   const startCountdown = useCallback((initialTime: number, syncTime: number) => {
@@ -269,7 +276,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
   }, [networkStatus.isOnline]);
 
-  // FIXED: Socket connection management - prevent double registration
+  // FIXED: Socket connection management with graceful degradation
   useEffect(() => {
     if (!isAuthenticated || !user || !networkStatus.isOnline) {
       if (socketService.isConnected()) {
@@ -294,6 +301,12 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return;
     }
 
+    // NEW: Skip connection if socket has been disabled
+    if (socketDisabledRef.current) {
+      console.log('SocketProvider: Socket disabled, skipping connection attempt');
+      return;
+    }
+
     const connectSocket = async () => {
       try {
         // Get socket token through the API proxy
@@ -311,21 +324,27 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
 
         if (!socketToken) {
-          console.warn('SocketProvider: No socket token available, skipping socket connection');
+          console.warn('SocketProvider: No socket token available, continuing without real-time features');
+          // Don't disable socket permanently for token issues - might be temporary
           return;
         }
 
+        // FIXED: Use polling-only transport to work through Netlify proxy
         await socketService.connect({
           url: '/',
           auth: { token: socketToken },
-          transports: ['polling']
+          transports: ['polling'] // Polling only - WebSocket can't be proxied through Netlify
         });
+
+        // Reset connection attempts on successful connection
+        connectionAttemptsRef.current = 0;
 
         setConnectionStatus(prev => ({
           ...prev,
           isConnected: true,
           lastConnectedAt: new Date(),
           reconnectAttempts: 0,
+          socketDisabled: false,
         }));
 
         // FIXED: Only register base handlers once per connection
@@ -530,19 +549,41 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
 
       } catch (error) {
-        console.error('SocketProvider: Failed to connect socket:', error);
-        setConnectionStatus(prev => ({
-          ...prev,
-          isConnected: false,
-          reconnectAttempts: (prev.reconnectAttempts || 0) + 1,
-        }));
+        // NEW: Graceful degradation - don't crash the app, just disable socket
+        console.warn('SocketProvider: Socket connection failed, continuing without real-time features:', error);
+        
+        connectionAttemptsRef.current += 1;
+        
+        if (connectionAttemptsRef.current >= MAX_CONNECTION_ATTEMPTS) {
+          console.warn(`SocketProvider: Max connection attempts (${MAX_CONNECTION_ATTEMPTS}) reached, disabling socket`);
+          socketDisabledRef.current = true;
+          setConnectionStatus(prev => ({
+            ...prev,
+            isConnected: false,
+            socketDisabled: true,
+            reconnectAttempts: connectionAttemptsRef.current,
+          }));
+        } else {
+          setConnectionStatus(prev => ({
+            ...prev,
+            isConnected: false,
+            reconnectAttempts: connectionAttemptsRef.current,
+          }));
+        }
+        
         baseHandlersRegistered.current = false;
+        // Don't throw - let app continue without socket
       }
     };
 
     connectSocket();
 
     const connectionInterval = setInterval(() => {
+      // NEW: Skip reconnection attempts if socket is disabled
+      if (socketDisabledRef.current) {
+        return;
+      }
+
       const isConnected = socketService.isConnected();
       setConnectionStatus(prev => ({ ...prev, isConnected }));
 
@@ -576,17 +617,41 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   }, [stopCountdown]);
 
+  // FIXED: joinSession now gracefully handles disabled socket
   const joinSession = useCallback(async (sessionId: string) => {
+    // NEW: If socket is disabled, just track the session locally
+    if (socketDisabledRef.current || !socketService.isConnected()) {
+      console.log('SocketProvider: Socket unavailable, tracking session locally:', sessionId);
+      setCurrentSessionId(sessionId);
+      return;
+    }
+
     try {
       await socketService.joinTestSession(sessionId);
       setCurrentSessionId(sessionId);
     } catch (error) {
       console.error('SocketProvider: Failed to join session', sessionId, error);
-      throw error;
+      // NEW: Don't throw - just track locally
+      setCurrentSessionId(sessionId);
     }
   }, []);
 
+  // FIXED: leaveSession now gracefully handles disabled socket
   const leaveSession = useCallback(async (sessionId: string) => {
+    // NEW: If socket is disabled, just clear the session locally
+    if (socketDisabledRef.current || !socketService.isConnected()) {
+      if (currentSessionId === sessionId) {
+        setCurrentSessionId(null);
+        stopCountdown();
+        setTimerState({
+          timeRemaining: 0,
+          isActive: false,
+          isPaused: false,
+        });
+      }
+      return;
+    }
+
     try {
       await socketService.leaveTestSession(sessionId);
 
@@ -601,6 +666,16 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     } catch (error) {
       console.error('SocketProvider: Failed to leave session', sessionId, error);
+      // NEW: Clean up locally anyway
+      if (currentSessionId === sessionId) {
+        setCurrentSessionId(null);
+        stopCountdown();
+        setTimerState({
+          timeRemaining: 0,
+          isActive: false,
+          isPaused: false,
+        });
+      }
     }
   }, [currentSessionId, stopCountdown]);
 
@@ -656,6 +731,15 @@ export const useSocketConnection = () => {
         message: 'You are offline. Your session is paused.',
         icon: 'wifi-off',
         gracePeriod: networkStatus.hasBeenOfflineTooLong ? 'expired' : 'active'
+      };
+    }
+
+    // NEW: Show message if socket is disabled but online
+    if (connectionStatus.socketDisabled) {
+      return {
+        type: 'info' as const,
+        message: 'Real-time features unavailable. Test functionality works normally.',
+        icon: 'info'
       };
     }
 

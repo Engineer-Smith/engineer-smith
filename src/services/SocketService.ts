@@ -1,4 +1,4 @@
-// src/services/SocketService.ts - Complete implementation with notification support
+// src/services/SocketService.ts - Complete implementation with notification support and transports option
 import { io, Socket } from 'socket.io-client';
 import type {
   NotificationSocketEvent,
@@ -102,24 +102,26 @@ interface AnswerErrorEvent {
   error: string;
 }
 
+// FIXED: Added transports option
 interface SocketServiceConfig {
   url: string;
   auth?: {
     token?: string;
   };
-  transports?: string[];  // Add this
+  transports?: string[]; // NEW: Allow specifying transports (e.g., ['polling'] or ['websocket'])
 }
 
 class SocketService {
   private socket: Socket | null = null;
   private currentSessionId: string | null = null;
 
+  // FIXED: Accept and use transports option
   async connect(config: SocketServiceConfig): Promise<void> {
     return new Promise((resolve, reject) => {
       this.socket = io(config.url, {
         withCredentials: true,
         auth: config.auth || { token: this.getAuthToken() },
-        transports: config.transports || ['polling', 'websocket']  // Add this
+        transports: config.transports || ['polling', 'websocket'] // NEW: Use provided transports or default
       });
 
       this.socket.on('connect', () => {
@@ -159,7 +161,7 @@ class SocketService {
     }
 
     this.currentSessionId = sessionId;
-
+    
     // ✅ Backend expects 'session:join'
     this.socket.emit('session:join', { sessionId });
   }
@@ -170,17 +172,17 @@ class SocketService {
     }
 
     this.currentSessionId = sessionId;
-
+    
     // ✅ Backend expects 'session:rejoin'
     this.socket.emit('session:rejoin', { sessionId });
   }
 
   async leaveTestSession(sessionId: string): Promise<void> {
     if (!this.socket?.connected) return;
-
+    
     // Backend doesn't have explicit leave handler, but emit anyway for completeness
     this.socket.emit('session:leave', { sessionId });
-
+    
     if (this.currentSessionId === sessionId) {
       this.currentSessionId = null;
     }
@@ -191,7 +193,7 @@ class SocketService {
     if (!this.socket?.connected) {
       throw new Error('Socket not connected');
     }
-
+    
     // ✅ Backend expects 'answer:submit'
     this.socket.emit('answer:submit', {
       sessionId,
@@ -204,7 +206,7 @@ class SocketService {
     if (!this.socket?.connected) {
       throw new Error('Socket not connected');
     }
-
+    
     // ✅ Backend expects 'timer:request_sync'
     this.socket.emit('timer:request_sync', { sessionId });
   }
@@ -228,7 +230,7 @@ class SocketService {
   // ✅ Backend emits 'session:joined'
   onSessionJoined(callback: (data: SessionJoinedEvent) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('session:joined', callback);
     return () => this.socket?.off('session:joined', callback);
   }
@@ -236,7 +238,7 @@ class SocketService {
   // ✅ Backend emits 'session:rejoined'  
   onSessionRejoined(callback: (data: SessionRejoinedEvent) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('session:rejoined', callback);
     return () => this.socket?.off('session:rejoined', callback);
   }
@@ -244,7 +246,7 @@ class SocketService {
   // ✅ Backend emits 'timer:sync' via sendTimerSync()
   onTimerSync(callback: (data: TimerSyncEvent) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('timer:sync', callback);
     return () => this.socket?.off('timer:sync', callback);
   }
@@ -252,7 +254,7 @@ class SocketService {
   // ✅ Backend emits 'timer:warning' via sendTimerWarning()
   onTimerWarning(callback: (data: TimerWarningEvent) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('timer:warning', callback);
     return () => this.socket?.off('timer:warning', callback);
   }
@@ -260,7 +262,7 @@ class SocketService {
   // ✅ Backend emits 'section:expired' via sendSectionExpired()
   onSectionExpired(callback: (data: SectionExpiredEvent) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('section:expired', callback);
     return () => this.socket?.off('section:expired', callback);
   }
@@ -268,7 +270,7 @@ class SocketService {
   // ✅ Backend emits 'test:completed' via sendTestCompleted()
   onTestCompleted(callback: (data: TestCompletedEvent) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('test:completed', callback);
     return () => this.socket?.off('test:completed', callback);
   }
@@ -276,7 +278,7 @@ class SocketService {
   // ✅ Backend emits 'session:error'
   onSessionError(callback: (data: SessionErrorEvent) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('session:error', callback);
     return () => this.socket?.off('session:error', callback);
   }
@@ -284,7 +286,7 @@ class SocketService {
   // ✅ Backend emits 'session:paused' via sendSessionPaused()
   onSessionPaused(callback: (data: SessionPausedEvent) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('session:paused', callback);
     return () => this.socket?.off('session:paused', callback);
   }
@@ -292,7 +294,7 @@ class SocketService {
   // ✅ Backend emits 'session:resumed' via sendSessionResumed()
   onSessionResumed(callback: (data: SessionResumedEvent) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('session:resumed', callback);
     return () => this.socket?.off('session:resumed', callback);
   }
@@ -304,7 +306,7 @@ class SocketService {
   // ✅ Backend emits 'answer:processed' after socket answer submission
   onAnswerProcessed(callback: (data: AnswerProcessedEvent) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('answer:processed', callback);
     return () => this.socket?.off('answer:processed', callback);
   }
@@ -312,7 +314,7 @@ class SocketService {
   // ✅ Backend emits 'answer:error' on socket answer submission failure
   onAnswerError(callback: (data: AnswerErrorEvent) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('answer:error', callback);
     return () => this.socket?.off('answer:error', callback);
   }
@@ -320,7 +322,7 @@ class SocketService {
   // ✅ Backend emits 'question:next' for socket-based navigation
   onQuestionNext(callback: (data: any) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('question:next', callback);
     return () => this.socket?.off('question:next', callback);
   }
@@ -328,7 +330,7 @@ class SocketService {
   // ✅ Backend emits 'section:transition' for socket-based navigation  
   onSectionTransition(callback: (data: any) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('section:transition', callback);
     return () => this.socket?.off('section:transition', callback);
   }
@@ -336,7 +338,7 @@ class SocketService {
   // ✅ Backend emits 'test:ready_for_completion' for socket-based flow
   onTestReadyForCompletion(callback: (data: any) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('test:ready_for_completion', callback);
     return () => this.socket?.off('test:ready_for_completion', callback);
   }
@@ -350,7 +352,7 @@ class SocketService {
    */
   onNotificationReceived(callback: (notification: NotificationSocketEvent) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('notification:new', callback);
     return () => this.socket?.off('notification:new', callback);
   }
@@ -360,7 +362,7 @@ class SocketService {
    */
   onNotificationBadgeUpdate(callback: (data: NotificationBadgeUpdateEvent) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('notification:badge_update', callback);
     return () => this.socket?.off('notification:badge_update', callback);
   }
@@ -370,7 +372,7 @@ class SocketService {
    */
   onNotificationRefreshBadge(callback: () => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('notification:refresh_badge', callback);
     return () => this.socket?.off('notification:refresh_badge', callback);
   }
@@ -380,7 +382,7 @@ class SocketService {
    */
   onNotificationMarkedRead(callback: (data: NotificationMarkedReadEvent) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('notification:marked_read', callback);
     return () => this.socket?.off('notification:marked_read', callback);
   }
@@ -390,7 +392,7 @@ class SocketService {
    */
   onNotificationsAllMarkedRead(callback: (data: NotificationsAllMarkedReadEvent) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('notifications:all_marked_read', callback);
     return () => this.socket?.off('notifications:all_marked_read', callback);
   }
@@ -400,7 +402,7 @@ class SocketService {
    */
   onNotificationsRecent(callback: (data: NotificationsRecentEvent) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('notifications:recent', callback);
     return () => this.socket?.off('notifications:recent', callback);
   }
@@ -410,7 +412,7 @@ class SocketService {
    */
   onNotificationsUnreadCount(callback: (data: { count: number }) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('notifications:unread_count', callback);
     return () => this.socket?.off('notifications:unread_count', callback);
   }
@@ -424,7 +426,7 @@ class SocketService {
    */
   onAttemptRequestSubmitted(callback: (data: AttemptRequestSubmittedEvent) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('attempt_request:submitted', callback);
     return () => this.socket?.off('attempt_request:submitted', callback);
   }
@@ -434,7 +436,7 @@ class SocketService {
    */
   onAttemptRequestReviewed(callback: (data: AttemptRequestReviewedEvent) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('attempt_request:reviewed', callback);
     return () => this.socket?.off('attempt_request:reviewed', callback);
   }
@@ -444,7 +446,7 @@ class SocketService {
    */
   onAttemptRequestError(callback: (data: AttemptRequestErrorEvent) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('attempt_request:error', callback);
     return () => this.socket?.off('attempt_request:error', callback);
   }
@@ -458,7 +460,7 @@ class SocketService {
     reviewedBy: string;
   }) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('attempt_request:decision_made', callback);
     return () => this.socket?.off('attempt_request:decision_made', callback);
   }
@@ -472,7 +474,7 @@ class SocketService {
    */
   onOverrideGranted(callback: (data: OverrideGrantedEvent) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('override:granted', callback);
     return () => this.socket?.off('override:granted', callback);
   }
@@ -482,7 +484,7 @@ class SocketService {
    */
   onOverrideError(callback: (data: OverrideErrorEvent) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on('override:error', callback);
     return () => this.socket?.off('override:error', callback);
   }
@@ -600,14 +602,14 @@ class SocketService {
   // Generic event listener
   on(eventName: string, callback: (...args: any[]) => void): () => void {
     if (!this.socket) throw new Error('Socket not connected');
-
+    
     this.socket.on(eventName, callback);
     return () => this.socket?.off(eventName, callback);
   }
 
   off(eventName: string, callback?: (...args: any[]) => void): void {
     if (!this.socket) return;
-
+    
     if (callback) {
       this.socket.off(eventName, callback);
     } else {
