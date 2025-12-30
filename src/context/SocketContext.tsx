@@ -317,7 +317,8 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         await socketService.connect({
           url: '/',
-          auth: { token: socketToken }
+          auth: { token: socketToken },
+          transports: ['polling']
         });
 
         setConnectionStatus(prev => ({
